@@ -58,10 +58,26 @@ export async function POST(request: Request) {
       apiKey,
     });
   } catch (error) {
-    const normalized = providerAdapter.normalizeError(error);
-    return NextResponse.json({ error: normalized.message }, { status: 422 });
+    // normalizeError is adapter-supplied; a defective future implementation
+    // throwing here shouldn't crash this route.
+    let message = "Could not validate this credential.";
+    try {
+      message = providerAdapter.normalizeError(error).message;
+    } catch {
+      // fall through to the generic message above
+    }
+    return NextResponse.json({ error: message }, { status: 422 });
   }
   if (!validation.valid) {
+    // A network/timeout hiccup during validation isn't the same claim as
+    // "this key is wrong" -- don't tell the user to replace a key that may
+    // well be valid.
+    if (validation.reason === "provider_unavailable") {
+      return NextResponse.json(
+        { error: "Couldn't reach the provider to validate this credential. Try again in a moment." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: validation.reason === "expired_credential" ? "This credential has expired." : "This credential is invalid." },
       { status: 422 }

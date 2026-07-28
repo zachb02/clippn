@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { ApiError, GoogleGenAI } from "@google/genai";
 import type {
   AIProvider,
   Capability,
@@ -48,18 +48,38 @@ function inferCapabilities(modelName: string): Capability[] {
 
 function normalizeGeminiError(error: unknown): NormalizedProviderError {
   const message = error instanceof Error ? error.message : String(error);
-  const lower = message.toLowerCase();
 
+  // The SDK throws a typed ApiError with a real HTTP status for every 4xx/5xx
+  // response (node_modules/@google/genai/dist/node/node.d.ts). Prefer that
+  // over string-matching the message: message-text heuristics are fragile --
+  // e.g. a bare `.includes("rate")` also matches the substring inside
+  // "generateContent", mislabeling unrelated errors as rate_limited.
+  if (error instanceof ApiError) {
+    const status = error.status;
+    let category: ProviderErrorCategory = "unknown";
+    if (status === 401) category = "invalid_credential";
+    else if (status === 403) category = "permission_denied";
+    else if (status === 429) category = "rate_limited";
+    else if (status === 500 || status === 502 || status === 503 || status === 504) category = "provider_unavailable";
+    else if (status === 400 && message.toLowerCase().includes("safety")) category = "unsafe_content";
+    const retryable = category === "rate_limited" || category === "provider_unavailable";
+    return { category, message, retryable };
+  }
+
+  // Fallback for non-ApiError throws (e.g. a network error before the SDK
+  // could even attach a status). Kept narrow and phrase-based, not
+  // single-word substring matching, to avoid the same false-positive class.
+  const lower = message.toLowerCase();
   let category: ProviderErrorCategory = "unknown";
-  if (lower.includes("api key not valid") || lower.includes("api_key_invalid") || lower.includes("401")) {
+  if (lower.includes("api key not valid") || lower.includes("api_key_invalid")) {
     category = "invalid_credential";
-  } else if (lower.includes("permission") || lower.includes("403")) {
+  } else if (lower.includes("permission denied")) {
     category = "permission_denied";
-  } else if (lower.includes("quota") || lower.includes("rate") || lower.includes("429")) {
+  } else if (lower.includes("rate limit") || lower.includes("quota exceeded")) {
     category = "rate_limited";
   } else if (lower.includes("safety") || lower.includes("blocked")) {
     category = "unsafe_content";
-  } else if (lower.includes("503") || lower.includes("unavailable")) {
+  } else if (lower.includes("unavailable") || lower.includes("econnrefused") || lower.includes("etimedout") || lower.includes("fetch failed")) {
     category = "provider_unavailable";
   }
 

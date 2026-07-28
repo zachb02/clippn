@@ -49,9 +49,18 @@ function inferCapabilities(modelId: string): Capability[] {
 }
 
 function normalizeOpenAiError(error: unknown): NormalizedProviderError {
-  const status = (error as { status?: number } | null)?.status;
   const message = error instanceof Error ? error.message : String(error);
 
+  // APIConnectionError/APIConnectionTimeoutError (real network/timeout
+  // failures, not auth rejections) deliberately have `status: undefined` --
+  // see node_modules/openai/core/error.d.ts. Without this check they'd fall
+  // through to "unknown"/non-retryable, and validateCredential would report
+  // a perfectly valid key as invalid just because the network hiccuped.
+  if (error instanceof OpenAI.APIConnectionError) {
+    return { category: "provider_unavailable", message, retryable: true };
+  }
+
+  const status = (error as { status?: number } | null)?.status;
   let category: ProviderErrorCategory = "unknown";
   if (status === 401) category = "invalid_credential";
   else if (status === 403) category = "permission_denied";
