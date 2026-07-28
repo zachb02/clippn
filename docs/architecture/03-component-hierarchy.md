@@ -80,6 +80,6 @@ EditorShell
 ## Cross-cutting primitives (shadcn/ui-based, original styling)
 
 `Button`, `Input`, `Textarea`, `Select`, `Dialog`, `Sheet`, `DropdownMenu`, `Tabs`,
-`Tooltip`, `Toast`, `Badge`, `Progress`, `Skeleton`, `Card` — themed to Clipforge's
+`Tooltip`, `Toast`, `Badge`, `Progress`, `Skeleton`, `Card` — themed to Clippn's
 palette/type in `globals.css` + `tailwind.config`, never left in shadcn default styling
 (per the anti-generic-slop design direction).

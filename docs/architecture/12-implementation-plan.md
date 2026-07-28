@@ -7,7 +7,7 @@ nothing is marked built on the basis of "should work."
 
 ## Phase 1 — Foundation (this engagement, BUILT)
 
-- Original brand ("Clipforge"), design system, landing page
+- Original brand ("Clippn"), design system, landing page
 - Authentication code against Supabase Auth (email/password, Google OAuth, magic link,
   password reset) — written correctly against the real Supabase SDK; live-flow
   verification requires either Docker (unavailable in this sandbox) or a real Supabase

@@ -1,8 +1,8 @@
 # Product Architecture
 
-## What Clipforge is
+## What Clippn is
 
-Clipforge is an original, independently-branded AI short-form video creation and editing
+Clippn is an original, independently-branded AI short-form video creation and editing
 platform. It reproduces the *functional category* of AI-assisted short-form video
 repurposing tools (auto-clipping long video, subtitle generation, voiceovers, AI imagery,
 a multitrack timeline editor, templates, social performance tracking) with entirely
@@ -12,7 +12,7 @@ of utilities work with no account at all.
 
 ## Three operating modes
 
-Every AI-touching feature in Clipforge declares which of these modes it can run under.
+Every AI-touching feature in Clippn declares which of these modes it can run under.
 A feature may support more than one.
 
 ```

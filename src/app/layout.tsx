@@ -16,7 +16,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Clipforge - Turn long videos into short-form clips",
+  title: "Clippn - Turn long videos into short-form clips",
   description:
     "Clip, caption, and edit short-form video with your own AI keys or fully local processing. No paywall, no watermark, no credits.",
 };

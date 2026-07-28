@@ -1,4 +1,4 @@
-# Clipforge
+# Clippn
 
 An original, independently-branded AI short-form video creation and editing platform.
 No pricing, no paywall, no credits, no watermark — every feature is available to every
@@ -35,7 +35,7 @@ npm run dev
 brew install postgresql@16 redis
 brew services start postgresql@16
 brew services start redis
-createdb clipforge_dev
+createdb clippn_dev
 ```
 
 Auth/storage in production run against Supabase; see `docs/architecture/` for what
