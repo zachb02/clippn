@@ -29,3 +29,7 @@ export const ConvertAudioRequestSchema = z.object({
 export const NormalizeAudioRequestSchema = z.object({
   targetLufs: z.coerce.number().min(-70).max(-5),
 });
+
+export const EnhanceSpeechRequestSchema = z.object({
+  strength: z.coerce.number().min(1).max(30),
+});

@@ -54,10 +54,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // adapter (Phase 3) would return a remote URL, which needs an http
     // fetch here instead of a filesystem read. Not built until that
     // adapter exists for real.
-    if (!speech.audioUrl.startsWith("/")) {
+    //
+    // audioUrl comes from a provider adapter, not the requesting user
+    // directly -- but a misbehaving or future adapter is still an
+    // untrusted boundary. Resolve and require true containment within
+    // public/, the same defense-in-depth pattern as resolveStoragePath.
+    const publicRoot = path.join(process.cwd(), "public");
+    const resolvedAudioPath = path.resolve(publicRoot, `.${speech.audioUrl}`);
+    if (
+      !speech.audioUrl.startsWith("/") ||
+      (resolvedAudioPath !== publicRoot && !resolvedAudioPath.startsWith(publicRoot + path.sep))
+    ) {
       return NextResponse.json({ error: "This provider's speech output isn't supported yet." }, { status: 501 });
     }
-    const buffer = await readFile(path.join(process.cwd(), "public", speech.audioUrl));
+    const buffer = await readFile(resolvedAudioPath);
 
     // ffprobe needs a real file on disk, not a Buffer -- write to a scratch
     // temp dir just for the probe, cleaned up immediately after.

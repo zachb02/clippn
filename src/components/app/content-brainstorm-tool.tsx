@@ -16,6 +16,7 @@ interface Connection {
 export function ContentBrainstormTool() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [loadingConnections, setLoadingConnections] = useState(true);
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ text: string; mock: boolean } | null>(null);
@@ -26,11 +27,15 @@ export function ContentBrainstormTool() {
       .then((body) => {
         setConnections(body.connections ?? []);
         if (body.connections?.[0]) setConnectionId(body.connections[0].id);
-      });
+      })
+      .catch(() => {
+        toast.error("Could not load your provider connections.");
+      })
+      .finally(() => setLoadingConnections(false));
   }, []);
 
   async function handleGenerate() {
-    if (!connectionId || !topic.trim()) return;
+    if (loading || !connectionId || !topic.trim()) return;
     setLoading(true);
     setResult(null);
     try {
@@ -50,6 +55,14 @@ export function ContentBrainstormTool() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (loadingConnections) {
+    return (
+      <div className="rounded-xl border border-dashed border-border/60 p-8 text-center">
+        <p className="text-sm text-muted-foreground">Loading your provider connections…</p>
+      </div>
+    );
   }
 
   if (connections.length === 0) {

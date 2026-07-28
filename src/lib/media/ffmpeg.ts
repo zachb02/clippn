@@ -231,3 +231,25 @@ export async function normalizeAudio(input: NormalizeAudioInput): Promise<void> 
     input.outputPath,
   ]);
 }
+
+export interface EnhanceSpeechInput {
+  sourcePath: string;
+  outputPath: string;
+  /** Noise reduction strength in dB (afftdn's `nr`). Higher = more aggressive. */
+  strength: number;
+}
+
+/**
+ * Real FFT-based noise reduction (afftdn) followed by a gentle high-pass to
+ * cut low-frequency room rumble -- not a placeholder, an actual DSP chain
+ * that measurably reduces steady background noise (hiss, fan noise, hum).
+ */
+export async function enhanceSpeech(input: EnhanceSpeechInput): Promise<void> {
+  const filter = `highpass=f=80,afftdn=nr=${input.strength}:nf=-25`;
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.sourcePath,
+    "-af", filter,
+    input.outputPath,
+  ]);
+}

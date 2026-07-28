@@ -178,6 +178,7 @@ export function EditorShell({
   }, [playing]);
 
   async function handleExport() {
+    if (exporting) return;
     setExporting(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/render`, { method: "POST" });
@@ -204,6 +205,7 @@ export function EditorShell({
   }
 
   async function handleAutoCaption() {
+    if (captioning) return;
     const firstVideoClip = sequencedVideo[0]?.clip;
     if (!firstVideoClip?.assetId) {
       toast.error("Add a clip to the video track first.");
@@ -255,7 +257,7 @@ export function EditorShell({
   }
 
   async function handleGenerateVoiceover() {
-    if (!voiceoverScript.trim()) return;
+    if (generatingVoiceover || !voiceoverScript.trim()) return;
     setGeneratingVoiceover(true);
     try {
       const connectionsResponse = await fetch("/api/providers/connections");

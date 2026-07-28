@@ -74,13 +74,6 @@ export const AI_TOOLS: ToolEntry[] = [
     requiresKey: true,
   },
   {
-    label: "Speech Enhancer",
-    description:
-      "Clean up room tone, hiss, and inconsistent levels in spoken-word audio before it hits the timeline.",
-    icon: SpeakerHigh,
-    requiresKey: true,
-  },
-  {
     label: "Vocal / Instrumental Separator",
     description:
       "Split a mixed track into vocal and instrumental stems for remixing, ducking, or subtitle alignment.",
@@ -170,6 +163,14 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     description:
       "Read codec, resolution, duration, and stream metadata for any uploaded file.",
     icon: MagnifyingGlass,
+    requiresKey: false,
+  },
+  {
+    slug: "speech-enhancer",
+    label: "Speech Enhancer",
+    description:
+      "Reduce background noise and room tone with real FFT-based denoising.",
+    icon: SpeakerHigh,
     requiresKey: false,
   },
   {
