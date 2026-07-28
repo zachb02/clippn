@@ -1,3 +1,4 @@
+import { createReadStream } from "fs";
 import OpenAI, { toFile } from "openai";
 import type {
   AIProvider,
@@ -13,23 +14,28 @@ import type {
   ProviderErrorCategory,
   TextGenerationInput,
   TextGenerationResult,
+  TranscriptionInput,
+  TranscriptResult,
 } from "./types";
 
 /**
  * Real OpenAI adapter against the official `openai` SDK.
  *
  * Phase 3/4 scope, honestly: text generation, model discovery, image
- * generation, and image editing are implemented and structurally correct
- * against the SDK's actual types -- transcription and speech synthesis are
- * NOT implemented yet. Both need real audio bytes
- * (client.audio.transcriptions.create takes a file/Blob,
- * client.audio.speech.create returns one), but
- * TranscriptionInput/SpeechSynthesisInput currently only carry a URL
- * reference, not bytes -- wiring that through needs the credential-
- * resolution service to also fetch/stream the referenced asset, which is
- * a real follow-on task, not something to fake here. editImage sidesteps
- * this by only ever accepting a data: URL (bytes the caller already has),
- * never a remote URL to fetch.
+ * generation, image editing, and transcription are implemented and
+ * structurally correct against the SDK's actual types -- speech synthesis
+ * is NOT implemented yet (client.audio.speech.create returns bytes, but
+ * there's no local-file destination wired for it yet the way transcription
+ * has one on the input side).
+ *
+ * Neither editImage nor transcribeAudio ever fetches a URL server-side --
+ * that's a deliberate SSRF-avoidance choice, not an oversight. Each takes
+ * its bytes from a source the caller already trusts by construction:
+ * editImage requires a data: URL (browser-uploaded bytes), and
+ * transcribeAudio requires audioUrl to be an absolute local filesystem path
+ * that the caller has already resolved through
+ * `resolveStoragePath`/`STORAGE_ROOT` containment (see
+ * src/lib/storage/local-storage.ts) -- never a raw user-supplied string.
  *
  * This code has never been run against a real OpenAI API key in this
  * sandbox -- no key was available to test with. It is written correctly
@@ -174,6 +180,21 @@ export const openaiProvider: AIProvider = {
     const image = response.data?.[0];
     const imageUrl = image?.url ?? (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : "");
     return { imageUrl, modelId: input.modelId };
+  },
+
+  async transcribeAudio(input: TranscriptionInput, credential: DecryptedCredential): Promise<TranscriptResult> {
+    const openai = client(credential);
+    const response = await openai.audio.transcriptions.create({
+      file: createReadStream(input.audioUrl),
+      model: input.modelId,
+      response_format: "verbose_json",
+    });
+    const segments = (response.segments ?? []).map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+    }));
+    return { text: response.text, segments, modelId: input.modelId };
   },
 
   normalizeError: normalizeOpenAiError,

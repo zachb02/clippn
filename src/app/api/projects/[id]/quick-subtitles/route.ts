@@ -4,7 +4,9 @@ import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { QuickSubtitlesRequestSchema } from "@/lib/schemas/quick-subtitles";
 import { getProvider } from "@/lib/ai/registry";
+import { getDefaultTranscriptionModelId } from "@/lib/ai/default-models";
 import { resolveCredential } from "@/lib/credentials/resolve-credential";
+import { resolveStoragePath } from "@/lib/storage/local-storage";
 
 const ProjectIdSchema = z.string().uuid();
 
@@ -29,8 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const { connectionId, assetId } = parsed.data;
 
-  const [asset] = await query<{ id: string; original_filename: string | null; duration_seconds: string | null }>(
-    `select id, original_filename, duration_seconds from assets
+  const [asset] = await query<{ id: string; storage_path: string; duration_seconds: string | null }>(
+    `select id, storage_path, duration_seconds from assets
      where id = $1 and project_id = $2 and user_id = $3 and deleted_at is null`,
     [assetId, parsedId.data, userId]
   );
@@ -48,11 +50,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "This provider doesn't support transcription." }, { status: 422 });
   }
 
+  let audioPath: string;
+  try {
+    audioPath = resolveStoragePath(asset.storage_path);
+  } catch {
+    return NextResponse.json({ error: "This asset's stored file could not be located." }, { status: 500 });
+  }
+
   try {
     const transcript = await provider.transcribeAudio(
       {
-        audioUrl: asset.original_filename ?? assetId,
-        modelId: "mock-full",
+        audioUrl: audioPath,
+        modelId: getDefaultTranscriptionModelId(credential.provider),
         durationSeconds: asset.duration_seconds ? Number(asset.duration_seconds) : undefined,
       },
       credential

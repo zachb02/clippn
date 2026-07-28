@@ -44,11 +44,10 @@ original Supabase-Auth-based plan referenced in earlier drafts of this document.
 - Real Google Gemini adapter (`@google/genai`) and OpenAI adapter (`openai`), both
   written and typechecked against the actual installed SDKs' type definitions
 - Both implement: `validateCredential`, `discoverModels`, `getCapabilities`,
-  `generateText`. OpenAI also implements `generateImage`
-- **Not implemented for either real adapter:** `transcribeAudio`, `synthesizeSpeech`.
-  Both need real audio bytes, but `TranscriptionInput`/`SpeechSynthesisInput` currently
-  carry only a URL reference — wiring real bytes through requires extending the
-  credential-resolution/asset-serving path, not yet done
+  `generateText`. OpenAI also implements `generateImage`, `editImage`, and
+  `transcribeAudio` (via `whisper-1`, added in Phase 4 -- see below)
+- **Not implemented for either real adapter:** `synthesizeSpeech`. Needs real audio
+  bytes out, not in, and there's no local-file destination wired for it yet
 - **Verification gap, stated plainly:** neither adapter has been exercised against a
   real, valid API key in this sandbox (none was available). What *was* verified: a
   syntactically-plausible but fake key was submitted for both providers and confirmed to
@@ -64,7 +63,14 @@ original Supabase-Auth-based plan referenced in earlier drafts of this document.
 Built and verified end-to-end (real UI, real Mock Provider round-trip, in three cases a
 real generated artifact landing in the project as an asset/timeline clip):
 
-- Quick Subtitles — transcribes and drops timed captions onto the text track
+- Quick Subtitles — transcribes and drops timed captions onto the text track. Now wired
+  to real OpenAI Whisper transcription: the route resolves the asset's real local file
+  through `resolveStoragePath` (never a raw user-supplied path) and reads it directly,
+  since this is a local-only app with no separate worker process to stream bytes to.
+  Previously this route passed `asset.original_filename ?? assetId` as `audioUrl`, which
+  wasn't a resolvable path at all -- harmless against the Mock Provider (which ignores
+  the value) but meant transcription could never have worked against a real provider.
+  Fixed in the same pass that added real `transcribeAudio` to the OpenAI adapter
 - AI Voiceover — generates speech and adds it as a real audio-track asset
 - Content Brainstorm — standalone hooks/titles/outline generator
 - AI Image Generator — standalone prompt-to-image

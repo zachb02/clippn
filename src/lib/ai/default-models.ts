@@ -12,3 +12,8 @@ export function getDefaultImageModelId(provider: ProviderId): string {
   if (provider === "openai") return "gpt-image-1";
   return "mock-full";
 }
+
+export function getDefaultTranscriptionModelId(provider: ProviderId): string {
+  if (provider === "openai") return "whisper-1";
+  return "mock-full";
+}
