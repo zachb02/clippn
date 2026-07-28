@@ -11,9 +11,11 @@ import {
   TextT,
   Export,
   Sparkle,
+  MicrophoneStage,
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { AssetPanel, type ProjectAsset } from "./asset-panel";
 import type { TimelineSpecT, TimelineClipT } from "@/lib/timeline/schema";
 import { emptyTimeline } from "@/lib/timeline/schema";
@@ -35,6 +37,8 @@ export function EditorShell({
   const [exporting, setExporting] = useState(false);
   const [captioning, setCaptioning] = useState(false);
   const [newCaptionText, setNewCaptionText] = useState("");
+  const [voiceoverScript, setVoiceoverScript] = useState("");
+  const [generatingVoiceover, setGeneratingVoiceover] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeVideoAssetIdRef = useRef<string | null>(null);
 
@@ -250,6 +254,49 @@ export function EditorShell({
     }
   }
 
+  async function handleGenerateVoiceover() {
+    if (!voiceoverScript.trim()) return;
+    setGeneratingVoiceover(true);
+    try {
+      const connectionsResponse = await fetch("/api/providers/connections");
+      const connectionsBody = await connectionsResponse.json();
+      const connection = connectionsBody.connections?.[0];
+      if (!connection) {
+        toast.error("Connect a provider first (Mock Provider works great for testing) in Settings.");
+        return;
+      }
+
+      const response = await fetch(`/api/projects/${projectId}/voiceover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: connection.id, script: voiceoverScript.trim() }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        toast.error(body.error ?? "Could not generate a voiceover.");
+        return;
+      }
+
+      const newAsset: ProjectAsset = {
+        id: body.asset.id,
+        kind: body.asset.kind,
+        storage_path: body.asset.storage_path,
+        original_filename: body.asset.original_filename,
+        duration_seconds: body.asset.duration_seconds,
+        width: null,
+        height: null,
+      };
+      setAssets((current) => [newAsset, ...current]);
+      addClipToTrack(newAsset, audioTrack.id);
+      setVoiceoverScript("");
+      toast.success(body.mock ? "Voiceover added (simulated, Mock Provider)." : "Voiceover added.");
+    } catch {
+      toast.error("Network error while generating the voiceover.");
+    } finally {
+      setGeneratingVoiceover(false);
+    }
+  }
+
   const activeCaption = textClips.find(
     (c) => playheadSeconds >= c.startSeconds && playheadSeconds < c.startSeconds + c.durationSeconds
   );
@@ -329,6 +376,25 @@ export function EditorShell({
                 <TextT />
               </Button>
             </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Generate voiceover</p>
+            <Textarea
+              value={voiceoverScript}
+              onChange={(e) => setVoiceoverScript(e.target.value)}
+              placeholder="Script to narrate…"
+              className="mt-1.5 min-h-16 text-sm"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-1.5 w-full"
+              onClick={handleGenerateVoiceover}
+              disabled={generatingVoiceover || !voiceoverScript.trim()}
+            >
+              <MicrophoneStage />
+              {generatingVoiceover ? "Generating…" : "Add to audio track"}
+            </Button>
           </div>
         </div>
       </div>

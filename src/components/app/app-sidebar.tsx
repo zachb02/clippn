@@ -25,7 +25,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof House; built: boole
   { href: "/app/templates", label: "Templates", icon: SquaresFour, built: false },
   { href: "/app/editor", label: "Editor", icon: PencilSimple, built: false },
   { href: "/app/assets", label: "Assets", icon: ImageSquare, built: false },
-  { href: "/app/ai-tools", label: "AI Tools", icon: Sparkle, built: false },
+  { href: "/app/ai-tools", label: "AI Tools", icon: Sparkle, built: true },
   { href: "/app/audio-tools", label: "Audio Tools", icon: Waveform, built: false },
   { href: "/app/social-tracker", label: "Social Tracker", icon: ChartLine, built: false },
   { href: "/app/settings/providers", label: "Settings", icon: Gear, built: true },
