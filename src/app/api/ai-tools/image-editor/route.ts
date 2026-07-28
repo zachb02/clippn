@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
-import { ImageGeneratorRequestSchema } from "@/lib/schemas/image-generator";
+import { ImageEditorRequestSchema } from "@/lib/schemas/image-editor";
 import { getProvider } from "@/lib/ai/registry";
 import { getDefaultImageModelId } from "@/lib/ai/default-models";
 import { resolveCredential } from "@/lib/credentials/resolve-credential";
@@ -9,11 +9,11 @@ export async function POST(request: Request) {
   const userId = await getOrCreateLocalUserId();
 
   const body = await request.json().catch(() => null);
-  const parsed = ImageGeneratorRequestSchema.safeParse(body);
+  const parsed = ImageEditorRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input." }, { status: 400 });
   }
-  const { connectionId, prompt } = parsed.data;
+  const { connectionId, prompt, sourceImageUrl } = parsed.data;
 
   const credential = await resolveCredential(connectionId, userId);
   if (!credential) {
@@ -21,13 +21,13 @@ export async function POST(request: Request) {
   }
 
   const provider = getProvider(credential.provider);
-  if (!provider.generateImage) {
-    return NextResponse.json({ error: "This provider doesn't support image generation." }, { status: 422 });
+  if (!provider.editImage) {
+    return NextResponse.json({ error: "This provider doesn't support image editing." }, { status: 422 });
   }
 
   try {
-    const result = await provider.generateImage(
-      { prompt, modelId: getDefaultImageModelId(credential.provider) },
+    const result = await provider.editImage(
+      { prompt, sourceImageUrl, modelId: getDefaultImageModelId(credential.provider) },
       credential
     );
     return NextResponse.json({ imageUrl: result.imageUrl, mock: result.mock === true });

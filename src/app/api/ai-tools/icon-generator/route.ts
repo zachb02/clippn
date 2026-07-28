@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { ImageGeneratorRequestSchema } from "@/lib/schemas/image-generator";
 import { getProvider } from "@/lib/ai/registry";
+import { getDefaultImageModelId } from "@/lib/ai/default-models";
 import { resolveCredential } from "@/lib/credentials/resolve-credential";
 
 export async function POST(request: Request) {
@@ -27,7 +28,10 @@ export async function POST(request: Request) {
   const framedPrompt = `A simple, clean square icon or avatar, centered composition, flat design: ${prompt}`;
 
   try {
-    const result = await provider.generateImage({ prompt: framedPrompt, modelId: "mock-full" }, credential);
+    const result = await provider.generateImage(
+      { prompt: framedPrompt, modelId: getDefaultImageModelId(credential.provider) },
+      credential
+    );
     return NextResponse.json({ imageUrl: result.imageUrl, mock: result.mock === true });
   } catch (error) {
     const normalized = provider.normalizeError(error);

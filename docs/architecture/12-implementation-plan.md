@@ -59,7 +59,7 @@ original Supabase-Auth-based plan referenced in earlier drafts of this document.
 - "Remember securely" envelope-encrypted persistence was actually already built in
   Phase 1, ahead of this phase's original description
 
-## Phase 4 — First AI tools (5 of 8 BUILT)
+## Phase 4 — First AI tools (6 of 8 BUILT)
 
 Built and verified end-to-end (real UI, real Mock Provider round-trip, in three cases a
 real generated artifact landing in the project as an asset/timeline clip):
@@ -69,13 +69,24 @@ real generated artifact landing in the project as an asset/timeline clip):
 - Content Brainstorm — standalone hooks/titles/outline generator
 - AI Image Generator — standalone prompt-to-image
 - Icon/Avatar Generator — same UI, framed for square icon/avatar output
+- AI Image Editor — upload an image client-side (base64 data URL, never a
+  server-fetched remote URL -- deliberately sidesteps the SSRF surface a
+  user-supplied fetch URL would open), describe an edit, real OpenAI
+  `images.edit` call (Mock Provider also implements it). Verified against
+  the real OpenAI API with a fake key (clean, normalized 401 rather than
+  a crash) and against the non-data-URL rejection path
 - Speech Enhancer — real FFmpeg FFT noise reduction (`afftdn` + high-pass), not
   provider-dependent, lives with the local tools instead
 
-**Not yet built:** AI Image Editor (conversational image edits), Vocal/Instrumental
-Separator (genuine stem separation needs a real ML model like Demucs — nothing in this
-stack does that yet, and faking it with an EQ pass would be dishonest, so it stays
-unbuilt rather than approximated).
+Also fixed in this pass: the image-generator and icon-generator routes were hardcoding
+`modelId: "mock-full"` for every provider, including real OpenAI connections -- harmless
+against the Mock Provider (whose model IDs are exactly `mock-full`/`mock-text-only`) but
+a live break for a real OpenAI credential, since `"mock-full"` isn't a real OpenAI model.
+Both routes now resolve a real per-provider default via `src/lib/ai/default-models.ts`.
+
+**Not yet built:** Vocal/Instrumental Separator (genuine stem separation needs a real ML
+model like Demucs — nothing in this stack does that yet, and faking it with an EQ pass
+would be dishonest, so it stays unbuilt rather than approximated).
 
 ## Phase 5 — Primary creation workflows (NOT YET BUILT)
 

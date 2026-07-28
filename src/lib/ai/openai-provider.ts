@@ -1,9 +1,10 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import type {
   AIProvider,
   Capability,
   CredentialValidationResult,
   DecryptedCredential,
+  ImageEditInput,
   ImageGenerationInput,
   ImageGenerationResult,
   ModelDescriptor,
@@ -17,15 +18,18 @@ import type {
 /**
  * Real OpenAI adapter against the official `openai` SDK.
  *
- * Phase 3 scope, honestly: text generation, model discovery, and image
- * generation are implemented and structurally correct against the SDK's
- * actual types -- transcription and speech synthesis are NOT implemented
- * yet. Both need real audio bytes (client.audio.transcriptions.create
- * takes a file/Blob, client.audio.speech.create returns one), but
+ * Phase 3/4 scope, honestly: text generation, model discovery, image
+ * generation, and image editing are implemented and structurally correct
+ * against the SDK's actual types -- transcription and speech synthesis are
+ * NOT implemented yet. Both need real audio bytes
+ * (client.audio.transcriptions.create takes a file/Blob,
+ * client.audio.speech.create returns one), but
  * TranscriptionInput/SpeechSynthesisInput currently only carry a URL
  * reference, not bytes -- wiring that through needs the credential-
  * resolution service to also fetch/stream the referenced asset, which is
- * a real follow-on task, not something to fake here.
+ * a real follow-on task, not something to fake here. editImage sidesteps
+ * this by only ever accepting a data: URL (bytes the caller already has),
+ * never a remote URL to fetch.
  *
  * This code has never been run against a real OpenAI API key in this
  * sandbox -- no key was available to test with. It is written correctly
@@ -74,6 +78,27 @@ function normalizeOpenAiError(error: unknown): NormalizedProviderError {
 
 function client(credential: DecryptedCredential): OpenAI {
   return new OpenAI({ apiKey: credential.apiKey });
+}
+
+const DATA_URL_PATTERN = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i;
+
+/**
+ * editImage only accepts a data: URL for the source image (the browser
+ * reads the user's uploaded file and base64-encodes it client-side) --
+ * never a remote http(s) URL fetched server-side. The security model
+ * explicitly bans accepting a user-supplied URL for a server-side fetch
+ * (SSRF surface); requiring a data: URL sidesteps that risk entirely
+ * rather than trying to allowlist-validate an arbitrary URL.
+ */
+function decodeSourceImage(sourceImageUrl: string): { buffer: Buffer; mimeType: string; extension: string } {
+  const match = DATA_URL_PATTERN.exec(sourceImageUrl);
+  if (!match) {
+    throw new Error("Only a directly-uploaded image is supported for editing right now.");
+  }
+  const mimeType = match[1] ?? "image/png";
+  const base64 = match[2] ?? "";
+  const extension = mimeType.split("/")[1] === "jpeg" ? "jpg" : mimeType.split("/")[1] ?? "png";
+  return { buffer: Buffer.from(base64, "base64"), mimeType, extension };
 }
 
 export const openaiProvider: AIProvider = {
@@ -131,6 +156,20 @@ export const openaiProvider: AIProvider = {
       model: input.modelId,
       prompt: input.prompt,
       n: 1,
+    });
+    const image = response.data?.[0];
+    const imageUrl = image?.url ?? (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : "");
+    return { imageUrl, modelId: input.modelId };
+  },
+
+  async editImage(input: ImageEditInput, credential: DecryptedCredential): Promise<ImageGenerationResult> {
+    const openai = client(credential);
+    const { buffer, mimeType, extension } = decodeSourceImage(input.sourceImageUrl);
+    const file = await toFile(buffer, `source.${extension}`, { type: mimeType });
+    const response = await openai.images.edit({
+      model: input.modelId,
+      image: file,
+      prompt: input.prompt,
     });
     const image = response.data?.[0];
     const imageUrl = image?.url ?? (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : "");
