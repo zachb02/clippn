@@ -33,9 +33,17 @@ export async function saveAsset(
 }
 
 export function resolveStoragePath(storagePath: string): string {
-  // storagePath is always a value this codebase generated (see saveAsset) --
-  // never derived from user input -- so a plain join is safe here.
-  return path.join(STORAGE_ROOT, storagePath);
+  // storagePath is always a value this codebase generated (see saveAsset),
+  // never derived directly from user input -- but this is the one place
+  // every stored path is turned into a real filesystem path, so it's also
+  // the right place for defense-in-depth: refuse to resolve outside
+  // STORAGE_ROOT even if a database row were ever hand-edited to contain
+  // a path-traversal sequence.
+  const resolved = path.resolve(STORAGE_ROOT, storagePath);
+  if (resolved !== STORAGE_ROOT && !resolved.startsWith(STORAGE_ROOT + path.sep)) {
+    throw new Error("Refusing to resolve a storage path outside the storage root.");
+  }
+  return resolved;
 }
 
 export async function deleteAsset(storagePath: string): Promise<void> {

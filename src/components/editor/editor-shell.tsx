@@ -10,6 +10,7 @@ import {
   CaretDown,
   TextT,
   Export,
+  Sparkle,
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ export function EditorShell({
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [captioning, setCaptioning] = useState(false);
   const [newCaptionText, setNewCaptionText] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeVideoAssetIdRef = useRef<string | null>(null);
@@ -197,6 +199,57 @@ export function EditorShell({
     }
   }
 
+  async function handleAutoCaption() {
+    const firstVideoClip = sequencedVideo[0]?.clip;
+    if (!firstVideoClip?.assetId) {
+      toast.error("Add a clip to the video track first.");
+      return;
+    }
+    setCaptioning(true);
+    try {
+      const connectionsResponse = await fetch("/api/providers/connections");
+      const connectionsBody = await connectionsResponse.json();
+      const connection = connectionsBody.connections?.[0];
+      if (!connection) {
+        toast.error("Connect a provider first (Mock Provider works great for testing) in Settings.");
+        return;
+      }
+
+      const response = await fetch(`/api/projects/${projectId}/quick-subtitles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: connection.id, assetId: firstVideoClip.assetId }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        toast.error(body.error ?? "Could not generate captions.");
+        return;
+      }
+
+      const newClips: TimelineClipT[] = body.captions.map(
+        (caption: { startSeconds: number; durationSeconds: number; text: string }) => ({
+          id: crypto.randomUUID(),
+          trackId: textTrack.id,
+          assetId: null,
+          startSeconds: caption.startSeconds,
+          durationSeconds: caption.durationSeconds,
+          trimInSeconds: 0,
+          textContent: { text: caption.text, fontSizePx: 48, color: "#ffffff" },
+        })
+      );
+      updateTimeline((current) => ({ ...current, clips: [...current.clips, ...newClips] }));
+      toast.success(
+        body.mock
+          ? `Added ${newClips.length} simulated captions (Mock Provider).`
+          : `Added ${newClips.length} captions.`
+      );
+    } catch {
+      toast.error("Network error while generating captions.");
+    } finally {
+      setCaptioning(false);
+    }
+  }
+
   const activeCaption = textClips.find(
     (c) => playheadSeconds >= c.startSeconds && playheadSeconds < c.startSeconds + c.durationSeconds
   );
@@ -253,6 +306,15 @@ export function EditorShell({
           <Button className="w-full" onClick={handleExport} disabled={exporting || sequencedVideo.length === 0}>
             <Export />
             {exporting ? "Rendering…" : "Export"}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleAutoCaption}
+            disabled={captioning || sequencedVideo.length === 0}
+          >
+            <Sparkle />
+            {captioning ? "Captioning…" : "Auto-caption"}
           </Button>
           <div>
             <p className="text-xs font-medium text-muted-foreground">Add caption at playhead</p>

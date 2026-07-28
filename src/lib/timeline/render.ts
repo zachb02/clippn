@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
+import { probeMedia } from "@/lib/media/ffmpeg";
 import type { TimelineSpecT, TimelineClipT } from "./schema";
 
 const execFileAsync = promisify(execFile);
@@ -60,7 +61,7 @@ export async function renderTimeline(
       ? await mixInAudioTrack(concatenatedVideoPath, audioClips, resolveAssetPath, workDir)
       : concatenatedVideoPath;
 
-  if (textClips.length === 0) {
+  if (!textClips.some((c) => c.textContent !== null)) {
     await execFileAsync(FFMPEG_PATH, ["-y", "-i", videoWithAudioPath, "-c", "copy", outputPath]);
     return;
   }
@@ -90,19 +91,45 @@ async function buildConcatenatedVideo(
     const sourcePath = resolveAssetPath(clip.assetId);
     const segmentPath = path.join(workDir, `video-segment-${i}.mp4`);
     const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
-    await execFileAsync(FFMPEG_PATH, [
-      "-y",
-      "-ss", String(clip.trimInSeconds),
-      "-i", sourcePath,
-      "-t", String(clip.durationSeconds),
-      "-vf", scaleFilter,
-      "-r", String(frameRate),
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-c:a", "aac",
-      segmentPath,
-    ]);
+    // Every segment gets a real audio stream, synthesizing silence when the
+    // source has none -- otherwise concatenation is inconsistent across
+    // segments and, more importantly, mixing in an audio-track clip later
+    // (mixInAudioTrack) fails outright on a video with no audio at all.
+    const { hasAudio } = await probeMedia(sourcePath);
+    const args = hasAudio
+      ? [
+          "-y",
+          "-ss", String(clip.trimInSeconds),
+          "-i", sourcePath,
+          "-t", String(clip.durationSeconds),
+          "-vf", scaleFilter,
+          "-r", String(frameRate),
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-c:a", "aac",
+          segmentPath,
+        ]
+      : [
+          "-y",
+          "-ss", String(clip.trimInSeconds),
+          "-i", sourcePath,
+          "-f", "lavfi",
+          "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+          "-t", String(clip.durationSeconds),
+          "-vf", scaleFilter,
+          "-r", String(frameRate),
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-c:a", "aac",
+          "-shortest",
+          segmentPath,
+        ];
+    await execFileAsync(FFMPEG_PATH, args);
     segmentPaths.push(segmentPath);
+  }
+
+  if (segmentPaths.length === 0) {
+    throw new Error("The video track has no clips with a valid source asset to render.");
   }
 
   if (segmentPaths.length === 1) {
@@ -173,14 +200,21 @@ async function burnInTextOverlays(
   outputPath: string,
   canvasWidth: number
 ): Promise<void> {
-  const overlayHeight = 320;
+  const overlayHeight = 420;
   const inputArgs: string[] = ["-y", "-i", videoPath];
   const filterParts: string[] = [];
   let lastLabel = "0:v";
 
-  for (let i = 0; i < textClips.length; i++) {
-    const clip = textClips[i];
-    if (!clip.textContent) continue;
+  // Filter out clips with no text content up front, so the running input
+  // index below always matches the actual -i args pushed for this clip --
+  // a null-content clip must never consume an index without adding an input.
+  const captionClips = textClips.filter(
+    (clip): clip is TimelineClipT & { textContent: NonNullable<TimelineClipT["textContent"]> } =>
+      clip.textContent !== null
+  );
+
+  for (let i = 0; i < captionClips.length; i++) {
+    const clip = captionClips[i];
     const pngPath = path.join(workDir, `caption-${i}.png`);
     await writeFile(pngPath, await renderCaptionPng(clip.textContent, canvasWidth, overlayHeight));
     inputArgs.push("-loop", "1", "-t", String(clip.durationSeconds), "-i", pngPath);
@@ -210,16 +244,46 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Rough monospace-independent estimate for bold sans-serif -- good enough
+ * to decide wrap points without an actual font metrics library. */
+function wrapToWidth(text: string, fontSizePx: number, maxWidth: number): string[] {
+  const avgCharWidth = fontSizePx * 0.56;
+  const maxCharsPerLine = Math.max(4, Math.floor(maxWidth / avgCharWidth));
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 async function renderCaptionPng(
   textContent: NonNullable<TimelineClipT["textContent"]>,
   width: number,
   height: number
 ): Promise<Buffer> {
+  const safeWidth = width * 0.88;
+  const lines = wrapToWidth(textContent.text, textContent.fontSizePx, safeWidth);
+  const lineHeight = textContent.fontSizePx * 1.25;
+  const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+  const tspans = lines
+    .map((line, i) => `<tspan x="50%" y="${startY + i * lineHeight}">${escapeXml(line)}</tspan>`)
+    .join("\n");
+
   const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-    <text x="50%" y="50%" font-size="${textContent.fontSizePx}" fill="${textContent.color}"
+    <text font-size="${textContent.fontSizePx}" fill="${textContent.color}"
       stroke="black" stroke-width="${Math.max(2, textContent.fontSizePx / 20)}" paint-order="stroke"
-      text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-weight="bold">
-      ${escapeXml(textContent.text)}
+      text-anchor="middle" font-family="sans-serif" font-weight="bold">
+      ${tspans}
     </text>
   </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();

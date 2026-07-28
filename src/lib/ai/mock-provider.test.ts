@@ -145,4 +145,18 @@ describe("mock provider", () => {
     expect(result.valid).toBe(true);
     expect(result.maskedEnding).toBe("9999");
   });
+
+  it("transcribeAudio spreads segments across a known duration instead of returning one blob", async () => {
+    const result = await mockProvider.transcribeAudio!(
+      { audioUrl: "file.mp3", modelId: "mock-full", durationSeconds: 8 },
+      credential()
+    );
+    expect(result.segments.length).toBeGreaterThan(1);
+    // Segments must be contiguous and never exceed the real duration.
+    expect(result.segments[0].start).toBe(0);
+    expect(result.segments[result.segments.length - 1].end).toBeLessThanOrEqual(8);
+    for (let i = 1; i < result.segments.length; i++) {
+      expect(result.segments[i].start).toBeCloseTo(result.segments[i - 1].end, 5);
+    }
+  });
 });

@@ -4,6 +4,7 @@ import { Readable } from "stream";
 import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { statAsset, readAssetStream } from "@/lib/storage/local-storage";
+import { parseRange } from "@/lib/http/range";
 
 const AssetIdSchema = z.string().uuid();
 
@@ -28,17 +29,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const rangeHeader = request.headers.get("range");
 
   if (rangeHeader) {
-    const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-    const start = match ? Number(match[1]) : 0;
-    const end = match && match[2] ? Number(match[2]) : stat.size - 1;
-    const stream = readAssetStream(asset.storage_path, { start, end });
+    const range = parseRange(rangeHeader, stat.size);
+    if (!range) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${stat.size}` },
+      });
+    }
+    const stream = readAssetStream(asset.storage_path, range);
     return new NextResponse(Readable.toWeb(stream) as ReadableStream, {
       status: 206,
       headers: {
         "Content-Type": contentType,
-        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+        "Content-Range": `bytes ${range.start}-${range.end}/${stat.size}`,
         "Accept-Ranges": "bytes",
-        "Content-Length": String(end - start + 1),
+        "Content-Length": String(range.end - range.start + 1),
       },
     });
   }

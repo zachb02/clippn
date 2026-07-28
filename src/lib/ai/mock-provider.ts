@@ -103,6 +103,32 @@ function checkCapability(modelId: string, capability: Capability): void {
   }
 }
 
+const MOCK_SENTENCES = [
+  "This is a simulated caption from the Mock Provider.",
+  "No real transcription happened here.",
+  "Connect a real provider to transcribe actual speech.",
+  "Every segment below is placeholder text, clearly labeled as mock.",
+];
+
+/** Splits a known duration into a few short segments so the caller (e.g.
+ * Quick Subtitles) gets something realistic to distribute across a
+ * timeline, instead of one blob covering the whole clip. */
+function mockSegments(durationSeconds?: number): { start: number; end: number; text: string }[] {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return [{ start: 0, end: 2.4, text: MOCK_SENTENCES[0] }];
+  }
+  const segmentLength = 2.5;
+  const count = Math.max(1, Math.min(MOCK_SENTENCES.length, Math.ceil(durationSeconds / segmentLength)));
+  const segments: { start: number; end: number; text: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const start = i * segmentLength;
+    const end = Math.min(start + segmentLength, durationSeconds);
+    if (start >= durationSeconds) break;
+    segments.push({ start, end, text: MOCK_SENTENCES[i % MOCK_SENTENCES.length] });
+  }
+  return segments;
+}
+
 async function simulateLatency(): Promise<void> {
   const delay = 400 + Math.random() * 2100;
   await new Promise((resolve) => setTimeout(resolve, delay));
@@ -203,7 +229,7 @@ export const mockProvider: AIProvider = {
   ): Promise<TranscriptResult> {
     return runMockCall(credential, input.modelId, "transcription", input.audioUrl, () => ({
       text: "This is a simulated transcript from the Mock Provider.",
-      segments: [{ start: 0, end: 2.4, text: "This is a simulated transcript from the Mock Provider." }],
+      segments: mockSegments(input.durationSeconds),
       modelId: input.modelId,
       mock: true as const,
     }));

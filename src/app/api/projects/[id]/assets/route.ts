@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
-import { saveAsset } from "@/lib/storage/local-storage";
+import { saveAsset, deleteAsset } from "@/lib/storage/local-storage";
 import { probeMedia } from "@/lib/media/ffmpeg";
 import { withTempJobDir } from "@/lib/media/temp-job";
 
@@ -63,13 +63,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "No file provided." }, { status: 400 });
   }
 
+  let storagePath: string | null = null;
   try {
     // ffprobe parsing the upload is the real validation: garbage/corrupt
     // files fail here before anything is written to permanent storage.
     const metadata = await withTempJobDir(file, ".bin", async ({ sourcePath }) => probeMedia(sourcePath));
+    if (!metadata.hasVideo && !metadata.hasAudio) {
+      return NextResponse.json({ error: "This file has no video or audio stream." }, { status: 422 });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { storagePath } = await saveAsset(parsedId.data, buffer, file.name);
+    const saved = await saveAsset(parsedId.data, buffer, file.name);
+    storagePath = saved.storagePath;
 
     const kind = metadata.hasVideo ? "video" : "audio";
     const [asset] = await query<AssetRow>(
@@ -95,6 +100,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ asset }, { status: 201 });
   } catch (error) {
+    // If the file was already written to permanent storage before the
+    // failure (e.g. the database insert itself failed), remove it rather
+    // than leave an orphaned file with no database record pointing to it.
+    if (storagePath) {
+      await deleteAsset(storagePath);
+    }
     const message = error instanceof Error ? error.message : "Could not process this file.";
     return NextResponse.json({ error: message }, { status: 422 });
   }

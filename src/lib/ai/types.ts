@@ -100,6 +100,9 @@ export interface ImageEditInput {
 export interface TranscriptionInput {
   audioUrl: string;
   modelId: string;
+  /** When known, lets a provider (including the mock) return segments
+   * spread across the real duration instead of one single blob. */
+  durationSeconds?: number;
 }
 
 export interface TranscriptResult {
