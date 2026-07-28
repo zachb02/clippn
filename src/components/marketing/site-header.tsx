@@ -31,17 +31,7 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            nativeButton={false}
-            render={<Link href="/login">Sign in</Link>}
-          />
-          <Button
-            size="sm"
-            nativeButton={false}
-            render={<Link href="/signup">Start creating</Link>}
-          />
+          <Button size="sm" nativeButton={false} render={<Link href="/app">Open Clippn</Link>} />
         </div>
       </div>
     </header>

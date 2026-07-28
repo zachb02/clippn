@@ -22,7 +22,7 @@ export default function TermsPage() {
           align="left"
           eyebrow={`Last updated ${LAST_UPDATED}`}
           title="Terms of Use"
-          subtitle="These terms govern your use of Clippn. By creating an account or using any tool on this site, you agree to them."
+          subtitle="These terms govern your use of Clippn. By running or using this software, you agree to them."
         />
         <LegalPage>
           <section>
@@ -39,14 +39,14 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2>2. Accounts and eligibility</h2>
+            <h2>2. Self-hosted use and eligibility</h2>
             <p>
-              You must provide accurate information when creating an account and are
-              responsible for keeping your login credentials confidential. You must be
-              old enough, under the law of the place you live, to agree to these terms
-              on your own behalf. You&apos;re responsible for activity that happens
-              under your account, whether or not you personally performed it, unless
-              it resulted from our failure to secure the service.
+              Clippn has no hosted accounts or login — you run it on your own machine
+              against your own local database, and you are responsible for that
+              environment: keeping your dependencies patched, your local data backed up
+              if you care to, and your own copy of any provider API keys you connect
+              secure. You must be old enough, under the law of the place you live, to
+              agree to these terms on your own behalf.
             </p>
           </section>
 

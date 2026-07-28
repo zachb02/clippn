@@ -15,8 +15,8 @@ const FAQS = [
     a: "By default it's held only for your current session and never written to disk. If you opt into \"remember this key,\" it's individually encrypted before storage — we detail the exact model on the credential settings page.",
   },
   {
-    q: "Can I use Clippn without creating an account?",
-    a: "Yes, for local tools like the video cutter and cropper. An account is only required once you want to save projects or connect an AI provider.",
+    q: "Do I need to create an account?",
+    a: "No. Clippn has no accounts at all — you clone the repo, run it on your own machine, and it's yours. Every project, connection, and setting lives in your own local database.",
   },
   {
     q: "Is my content used to train any model?",

@@ -27,7 +27,7 @@ export function Hero() {
             size="lg"
             nativeButton={false}
             render={
-              <Link href="/signup">
+              <Link href="/app">
                 Start creating free
                 <ArrowRight />
               </Link>
