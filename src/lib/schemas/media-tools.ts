@@ -11,3 +11,21 @@ export const CropRequestSchema = z.object({
   width: z.coerce.number().int().positive(),
   height: z.coerce.number().int().positive(),
 });
+
+export const CompressRequestSchema = z.object({
+  crf: z.coerce.number().int().min(18).max(35),
+});
+
+const AudioFormatSchema = z.enum(["mp3", "wav", "aac"]);
+
+export const ExtractAudioRequestSchema = z.object({
+  format: AudioFormatSchema,
+});
+
+export const ConvertAudioRequestSchema = z.object({
+  format: AudioFormatSchema,
+});
+
+export const NormalizeAudioRequestSchema = z.object({
+  targetLufs: z.coerce.number().min(-70).max(-5),
+});

@@ -106,3 +106,128 @@ export async function crop(input: CropInput): Promise<void> {
     input.outputPath,
   ]);
 }
+
+export interface GenericMediaMetadata {
+  durationSeconds: number;
+  width: number;
+  height: number;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  formatName: string;
+  bitRate: number | null;
+}
+
+/**
+ * Like inspectMedia, but doesn't require a video stream -- used by tools
+ * that also accept audio-only input (converter, video-to-audio, balancer).
+ */
+export async function probeMedia(sourcePath: string): Promise<GenericMediaMetadata> {
+  const { stdout } = await execFileAsync(FFPROBE_PATH, [
+    "-v", "error",
+    "-show_format",
+    "-show_streams",
+    "-of", "json",
+    sourcePath,
+  ]);
+
+  const parsed = JSON.parse(stdout) as FfprobeOutput & { format: { bit_rate?: string } };
+  const videoStream = parsed.streams.find((s) => s.codec_type === "video");
+  const hasAudio = parsed.streams.some((s) => s.codec_type === "audio");
+  const durationSeconds = Number(parsed.format.duration ?? 0);
+
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw new Error("Could not read this file as media (unrecognized or corrupt container).");
+  }
+  if (durationSeconds > MAX_DURATION_SECONDS) {
+    throw new Error(`File is too long (max ${MAX_DURATION_SECONDS / 60} minutes for this tool).`);
+  }
+  const width = videoStream?.width ?? 0;
+  const height = videoStream?.height ?? 0;
+  if (width > MAX_DIMENSION_PX || height > MAX_DIMENSION_PX) {
+    throw new Error("Video resolution exceeds the supported maximum.");
+  }
+
+  return {
+    durationSeconds,
+    width,
+    height,
+    hasVideo: Boolean(videoStream),
+    hasAudio,
+    formatName: parsed.format.format_name ?? "unknown",
+    bitRate: parsed.format.bit_rate ? Number(parsed.format.bit_rate) : null,
+  };
+}
+
+export interface CompressInput {
+  sourcePath: string;
+  outputPath: string;
+  /** Constant Rate Factor: lower = higher quality/larger file. 18-28 is a sane range. */
+  crf: number;
+}
+
+export async function compress(input: CompressInput): Promise<void> {
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.sourcePath,
+    "-c:v", "libx264",
+    "-crf", String(input.crf),
+    "-preset", "medium",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    input.outputPath,
+  ]);
+}
+
+export interface ExtractAudioInput {
+  sourcePath: string;
+  outputPath: string;
+  format: "mp3" | "wav" | "aac";
+}
+
+const AUDIO_CODEC_BY_FORMAT: Record<ExtractAudioInput["format"], string> = {
+  mp3: "libmp3lame",
+  wav: "pcm_s16le",
+  aac: "aac",
+};
+
+export async function extractAudio(input: ExtractAudioInput): Promise<void> {
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.sourcePath,
+    "-vn",
+    "-c:a", AUDIO_CODEC_BY_FORMAT[input.format],
+    input.outputPath,
+  ]);
+}
+
+export interface ConvertAudioInput {
+  sourcePath: string;
+  outputPath: string;
+  format: "mp3" | "wav" | "aac";
+}
+
+export async function convertAudio(input: ConvertAudioInput): Promise<void> {
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.sourcePath,
+    "-c:a", AUDIO_CODEC_BY_FORMAT[input.format],
+    input.outputPath,
+  ]);
+}
+
+export interface NormalizeAudioInput {
+  sourcePath: string;
+  outputPath: string;
+  /** Target integrated loudness in LUFS. -14 matches common streaming platform targets. */
+  targetLufs: number;
+}
+
+export async function normalizeAudio(input: NormalizeAudioInput): Promise<void> {
+  const filter = `loudnorm=I=${input.targetLufs}:TP=-1.5:LRA=11`;
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.sourcePath,
+    "-af", filter,
+    input.outputPath,
+  ]);
+}

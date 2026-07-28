@@ -135,6 +135,7 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     requiresKey: false,
   },
   {
+    slug: "video-compressor",
     label: "Compressor",
     description:
       "Reduce file size for faster uploads and sharing without a separate re-encode step.",
@@ -142,6 +143,7 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     requiresKey: false,
   },
   {
+    slug: "audio-balancer",
     label: "Audio Balancer",
     description:
       "Normalize loudness across a track or between dialogue and music beds.",
@@ -149,18 +151,21 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     requiresKey: false,
   },
   {
+    slug: "audio-converter",
     label: "Audio Converter",
     description: "Convert between common audio formats and sample rates.",
     icon: ArrowsCounterClockwise,
     requiresKey: false,
   },
   {
+    slug: "video-to-audio-converter",
     label: "Video-to-Audio Converter",
     description: "Extract the audio track from a video file as a standalone file.",
     icon: FileAudio,
     requiresKey: false,
   },
   {
+    slug: "media-inspector",
     label: "Media Inspector",
     description:
       "Read codec, resolution, duration, and stream metadata for any uploaded file.",
