@@ -13,7 +13,15 @@ interface Connection {
   provider: string;
 }
 
-export function ImageGeneratorTool() {
+export function ImageGeneratorTool({
+  endpoint,
+  placeholder,
+  imageClassName = "w-full max-w-xs rounded-lg border border-border/60",
+}: {
+  endpoint: string;
+  placeholder: string;
+  imageClassName?: string;
+}) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [loadingConnections, setLoadingConnections] = useState(true);
@@ -39,7 +47,7 @@ export function ImageGeneratorTool() {
     setLoading(true);
     setResult(null);
     try {
-      const response = await fetch("/api/ai-tools/image-generator", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connectionId, prompt: prompt.trim() }),
@@ -86,7 +94,7 @@ export function ImageGeneratorTool() {
           <Input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe the image you want"
+            placeholder={placeholder}
             onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
           />
           <Button onClick={handleGenerate} disabled={loading || !prompt.trim()}>
@@ -103,7 +111,7 @@ export function ImageGeneratorTool() {
             {result.mock && <Badge variant="outline">Simulated result (Mock Provider)</Badge>}
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element -- provider-returned URL, not a static import Next can optimize */}
-          <img src={result.imageUrl} alt={prompt} className="w-full max-w-xs rounded-lg border border-border/60" />
+          <img src={result.imageUrl} alt={prompt} className={imageClassName} />
         </div>
       )}
     </div>

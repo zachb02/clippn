@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Lightbulb, Image as ImageIcon } from "@phosphor-icons/react/dist/ssr";
+import { Lightbulb, Image as ImageIcon, UserSquare } from "@phosphor-icons/react/dist/ssr";
 
 const TOOLS = [
   { href: "/app/ai-tools/content-brainstorm", label: "Content Brainstorm", icon: Lightbulb },
   { href: "/app/ai-tools/image-generator", label: "AI Image Generator", icon: ImageIcon },
+  { href: "/app/ai-tools/icon-generator", label: "Icon / Avatar Generator", icon: UserSquare },
 ];
 
 export default function AiToolsIndexPage() {

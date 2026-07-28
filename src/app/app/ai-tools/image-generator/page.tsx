@@ -9,7 +9,10 @@ export default function ImageGeneratorPage() {
         using your connected AI provider.
       </p>
       <div className="mt-6">
-        <ImageGeneratorTool />
+        <ImageGeneratorTool
+          endpoint="/api/ai-tools/image-generator"
+          placeholder="Describe the image you want"
+        />
       </div>
     </div>
   );
