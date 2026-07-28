@@ -69,13 +69,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
   if (!validation.valid) {
-    // A network/timeout hiccup during validation isn't the same claim as
-    // "this key is wrong" -- don't tell the user to replace a key that may
-    // well be valid.
+    // A network/timeout hiccup or a rate limit during validation isn't the
+    // same claim as "this key is wrong" -- don't tell the user to replace a
+    // key that may well be valid.
     if (validation.reason === "provider_unavailable") {
       return NextResponse.json(
         { error: "Couldn't reach the provider to validate this credential. Try again in a moment." },
         { status: 503 }
+      );
+    }
+    if (validation.reason === "rate_limited") {
+      return NextResponse.json(
+        { error: "This provider is rate-limiting requests right now. Try again shortly." },
+        { status: 429 }
       );
     }
     return NextResponse.json(

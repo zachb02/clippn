@@ -9,7 +9,10 @@ import type { ProviderId } from "./types";
  * per connected provider.
  */
 export function getDefaultImageModelId(provider: ProviderId): string {
-  if (provider === "openai") return "gpt-image-1";
+  // gpt-image-1 is scheduled for shutdown (Oct 2026); gpt-image-2 is its
+  // current replacement and is present in the installed SDK's ImageModel
+  // union for both generate and edit.
+  if (provider === "openai") return "gpt-image-2";
   return "mock-full";
 }
 

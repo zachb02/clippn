@@ -76,7 +76,7 @@ function normalizeOpenAiError(error: unknown): NormalizedProviderError {
   else if (status === 403) category = "permission_denied";
   else if (status === 429) category = "rate_limited";
   else if (status === 400 && message.toLowerCase().includes("safety")) category = "unsafe_content";
-  else if (status && status >= 500) category = "provider_unavailable";
+  else if (status === 408 || (status && status >= 500)) category = "provider_unavailable";
 
   const retryable = category === "rate_limited" || category === "provider_unavailable";
   return { category, message, retryable };
@@ -104,7 +104,11 @@ function decodeSourceImage(sourceImageUrl: string): { buffer: Buffer; mimeType: 
   const mimeType = match[1] ?? "image/png";
   const base64 = match[2] ?? "";
   const extension = mimeType.split("/")[1] === "jpeg" ? "jpg" : mimeType.split("/")[1] ?? "png";
-  return { buffer: Buffer.from(base64, "base64"), mimeType, extension };
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.length === 0) {
+    throw new Error("Uploaded image data is empty or invalid.");
+  }
+  return { buffer, mimeType, extension };
 }
 
 export const openaiProvider: AIProvider = {

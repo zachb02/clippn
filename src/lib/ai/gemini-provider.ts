@@ -56,12 +56,21 @@ function normalizeGeminiError(error: unknown): NormalizedProviderError {
   // "generateContent", mislabeling unrelated errors as rate_limited.
   if (error instanceof ApiError) {
     const status = error.status;
+    const lower = message.toLowerCase();
     let category: ProviderErrorCategory = "unknown";
-    if (status === 401) category = "invalid_credential";
+    // Gemini's actual invalid-key response is HTTP 400 with API_KEY_INVALID
+    // in the body, not 401 -- confirmed against the installed SDK. Check
+    // this before the generic 400-is-safety-rejection branch below, or a
+    // real invalid key falls through to "unknown" instead of being
+    // recognized.
+    if (status === 400 && (lower.includes("api key not valid") || lower.includes("api_key_invalid"))) {
+      category = "invalid_credential";
+    } else if (status === 401) category = "invalid_credential";
     else if (status === 403) category = "permission_denied";
     else if (status === 429) category = "rate_limited";
-    else if (status === 500 || status === 502 || status === 503 || status === 504) category = "provider_unavailable";
-    else if (status === 400 && message.toLowerCase().includes("safety")) category = "unsafe_content";
+    else if (status === 408 || status === 500 || status === 502 || status === 503 || status === 504) {
+      category = "provider_unavailable";
+    } else if (status === 400 && lower.includes("safety")) category = "unsafe_content";
     const retryable = category === "rate_limited" || category === "provider_unavailable";
     return { category, message, retryable };
   }
