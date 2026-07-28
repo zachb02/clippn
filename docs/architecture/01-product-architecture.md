@@ -7,8 +7,10 @@ platform. It reproduces the *functional category* of AI-assisted short-form vide
 repurposing tools (auto-clipping long video, subtitle generation, voiceovers, AI imagery,
 a multitrack timeline editor, templates, social performance tracking) with entirely
 original branding, visual design, copy, and source code, and with **no paywall of any
-kind** — every feature is available to every authenticated user, and a meaningful subset
-of utilities work with no account at all.
+kind** — every feature is available to every user. Clippn also has no accounts and no
+hosted backend: each clone runs entirely on the user's own machine against their own
+local Postgres/Redis, so "no account at all" isn't a subset of utilities, it's the whole
+product.
 
 ## Three operating modes
 
@@ -63,8 +65,11 @@ what the user has connected, never by payment.
     └─────────┬───────────────┬──────────────────┘
               │                │
    ┌──────────▼───────┐  ┌─────▼─────────────┐
-   │ Postgres (Supabase│  │  Redis + BullMQ    │
-   │ in prod) + RLS    │  │  durable job queue │
+   │  Local Postgres   │  │  Redis (session    │
+   │  (single profile, │  │  credentials; a    │
+   │  no RLS -- no     │  │  durable job queue │
+   │  other tenant)    │  │  is designed, not   │
+   │                    │  │  built yet)        │
    └───────────────────┘  └─────┬──────────────┘
                                  │
                     ┌────────────▼─────────────┐
@@ -80,8 +85,10 @@ what the user has connected, never by payment.
                     └────────────┬─────────────┘
                                  │
                     ┌────────────▼─────────────┐
-                    │  Private object storage    │
-                    │ (Supabase Storage / S3)    │
+                    │  Local filesystem storage   │
+                    │  (storage/, gitignored --   │
+                    │  the user's own machine,    │
+                    │  not a cloud bucket)         │
                     └────────────────────────────┘
 ```
 

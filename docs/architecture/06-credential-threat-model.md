@@ -1,5 +1,11 @@
 # Credential Threat Model
 
+> **Superseded note:** Clippn has no accounts, so the "Spoofing" section's `auth.uid()`/
+> RLS framing below no longer applies literally -- there is one local profile per clone,
+> not multiple tenants to spoof between. The rest of this threat model (session-only vs.
+> envelope-encrypted persistence, redaction, DoS, elevation-of-privilege) is unchanged and
+> accurately describes the real implementation in `src/lib/credentials/`.
+
 Scope: the lifecycle of a user's own Google Gemini or OpenAI API key from the moment
 they type it into the Provider Connections form to the moment it is used for a real
 provider call, or deleted.

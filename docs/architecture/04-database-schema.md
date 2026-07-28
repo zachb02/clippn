@@ -1,9 +1,16 @@
 # Database Schema
 
-Postgres (Supabase in production). UUID primary keys throughout (`gen_random_uuid()`).
-Every user-owned table carries `user_id uuid references profiles(id) on delete cascade`
-and is **private by default** via Row Level Security — see `11-security-model.md` for
-the policy pattern applied uniformly.
+> **Superseded note:** this doc's original text assumed a hosted Supabase Auth/RLS
+> model. Clippn has no accounts and no hosted backend -- every clone runs against its
+> own local Postgres with a single auto-provisioned profile, and RLS was removed as a
+> result (see `supabase/migrations/00000000000001_phase1_core_schema.sql` and
+> `12-implementation-plan.md`). The table-by-table schema below is otherwise still
+> accurate; only the auth/RLS framing is stale.
+
+Local Postgres, one instance per clone. UUID primary keys throughout
+(`gen_random_uuid()`). Every user-owned table still carries a `user_id` column (useful if
+multi-profile support is ever added) but it's not RLS-enforced -- there's no other tenant
+on a local single-user database to isolate from.
 
 No table on the banned list (`subscriptions`, `plans`, `prices`, `products`, `invoices`,
 `payments`, `credit_wallets`, `credit_transactions`, `entitlements`, `checkout_sessions`,

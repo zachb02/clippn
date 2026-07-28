@@ -1,6 +1,13 @@
 # Security Model
 
-## Tenant isolation
+> **Superseded note:** the "Tenant isolation" section below describes the original
+> Supabase-Auth/RLS design. Clippn has no accounts and no hosted backend -- RLS was
+> removed (see `12-implementation-plan.md`); a local single-user database has no other
+> tenant to isolate from. Every other section (storage, SSRF protection, input
+> validation, headers, rate limiting, secret hygiene) still describes the real
+> implementation accurately.
+
+## Tenant isolation (superseded -- kept for historical context, see note above)
 
 Every user-owned table has RLS enabled with a uniform policy pattern:
 
@@ -60,8 +67,8 @@ instead of it — a bug in one layer should not be a full compromise.
 - `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`,
   `X-Frame-Options: DENY` (or CSP frame-ancestors equivalent), `Referrer-Policy:
   strict-origin-when-cross-origin`.
-- Session cookies: `httpOnly`, `secure`, `sameSite=lax` (or `strict` where flows
-  allow), short-lived with refresh, per Supabase Auth defaults.
+- Session cookies: not applicable -- there is no login session, since there are no
+  accounts. The app is reachable only on the machine it runs on.
 - Mutating Server Actions rely on Next.js's built-in same-origin enforcement for
   Actions; any additional Route Handler that mutates state validates an
   origin/CSRF-safe pattern explicitly.
