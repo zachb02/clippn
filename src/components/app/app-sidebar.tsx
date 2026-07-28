@@ -28,7 +28,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof House; built: boole
   { href: "/app/ai-tools", label: "AI Tools", icon: Sparkle, built: false },
   { href: "/app/audio-tools", label: "Audio Tools", icon: Waveform, built: false },
   { href: "/app/social-tracker", label: "Social Tracker", icon: ChartLine, built: false },
-  { href: "/app/settings", label: "Settings", icon: Gear, built: true },
+  { href: "/app/settings/providers", label: "Settings", icon: Gear, built: true },
 ];
 
 export function AppSidebar() {
@@ -44,6 +44,22 @@ export function AppSidebar() {
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV_ITEMS.map((item) => {
+          if (!item.built) {
+            return (
+              <span
+                key={item.href}
+                aria-disabled="true"
+                title="Not built yet"
+                className="flex cursor-default items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground/50"
+              >
+                <item.icon className="size-4.5 shrink-0" />
+                {item.label}
+                <span className="ml-auto rounded-full border border-border/40 px-1.5 py-0.5 text-[10px]">
+                  soon
+                </span>
+              </span>
+            );
+          }
           const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
           return (
             <Link
@@ -58,11 +74,6 @@ export function AppSidebar() {
             >
               <item.icon className="size-4.5 shrink-0" />
               {item.label}
-              {!item.built && (
-                <span className="ml-auto rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  soon
-                </span>
-              )}
             </Link>
           );
         })}

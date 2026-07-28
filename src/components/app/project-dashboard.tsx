@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, DotsThree, FolderOpen } from "@phosphor-icons/react/dist/ssr";
@@ -146,7 +147,9 @@ export function ProjectDashboard({ initialProjects }: { initialProjects: Project
                     className="h-7"
                   />
                 ) : (
-                  <p className="font-medium">{project.title}</p>
+                  <Link href={`/app/projects/${project.id}`} className="font-medium hover:text-primary">
+                    {project.title}
+                  </Link>
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
