@@ -56,7 +56,7 @@ export function WorkflowGrid() {
             Seven ways to start a project
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Pick a workflow that matches what you're making, or start from a blank
+            Pick a workflow that matches what you&apos;re making, or start from a blank
             timeline. Every workflow is available on every account.
           </p>
         </div>

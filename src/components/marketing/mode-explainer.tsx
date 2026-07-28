@@ -10,7 +10,7 @@ const MODES = [
   {
     icon: Key,
     title: "Connected AI Mode",
-    body: "Paste a Google Gemini or OpenAI key to unlock generation and transcription. Your key is used only for your requests and never logged.",
+    body: "Paste a Google Gemini or OpenAI key to enable generation and transcription. Your key is used only for your requests and never logged.",
   },
   {
     icon: Flask,

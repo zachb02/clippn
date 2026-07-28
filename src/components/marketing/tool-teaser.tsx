@@ -38,7 +38,7 @@ export function ToolTeaser() {
               </h2>
               <p className="mt-3 text-muted-foreground">
                 Twelve AI-assisted tools, each running on the key you bring — or the
-                built-in Mock Provider if you'd rather try things risk-free first.
+                built-in Mock Provider if you&apos;d rather try things risk-free first.
               </p>
             </div>
             <Button
