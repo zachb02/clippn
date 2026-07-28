@@ -107,6 +107,33 @@ describe("mock provider", () => {
     }
   });
 
+  it("rejects discoverModels and getCapabilities for an expired credential too, not just generation calls", async () => {
+    const expired = credential({ expiresAt: new Date(Date.now() - 1000).toISOString() });
+    await expect(mockProvider.discoverModels(expired)).rejects.toThrow();
+    await expect(mockProvider.getCapabilities(expired)).rejects.toThrow();
+  });
+
+  it("mock-full only declares capabilities backed by a real implemented method", async () => {
+    const models = await mockProvider.discoverModels(credential());
+    const full = models.find((m) => m.modelId === "mock-full");
+    // Every one of these must have a corresponding method above, or gating
+    // UI code on capabilities (per the AIProvider contract) would call an
+    // undefined method and crash instead of getting a clean rejection.
+    expect(new Set(full?.capabilities)).toEqual(
+      new Set([
+        "textGeneration",
+        "promptEnhancement", // via generateText, not its own method
+        "imageGeneration",
+        "imageEditing",
+        "transcription",
+        "wordLevelTimestamps", // transcribeAudio returns segment timestamps
+        "textToSpeech",
+      ])
+    );
+    expect(mockProvider.generateStructuredOutput).toBeUndefined();
+    expect(mockProvider.createVideoJob).toBeUndefined();
+  });
+
   it("validateCredential reports expired credentials without attempting a call", async () => {
     const expired = credential({ expiresAt: new Date(Date.now() - 1000).toISOString() });
     const result = await mockProvider.validateCredential(expired);

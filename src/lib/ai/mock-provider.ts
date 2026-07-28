@@ -23,26 +23,23 @@ const UNSAFE_TRIGGER = "__mock_unsafe__";
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_CALLS = 5;
 
-const ALL_CAPABILITIES: Capability[] = [
+// Only capabilities with a real implemented method below. The AIProvider
+// contract says consumers gate on declared capabilities, not on whether a
+// method happens to exist -- so declaring more than is implemented would be
+// a live footgun, not just a documentation mismatch.
+const FULL_CAPABILITIES: Capability[] = [
   "textGeneration",
-  "structuredOutput",
+  "promptEnhancement",
   "imageGeneration",
   "imageEditing",
-  "multiImageEditing",
-  "promptEnhancement",
   "transcription",
   "wordLevelTimestamps",
   "textToSpeech",
-  "streamingSpeech",
-  "videoGeneration",
-  "videoEditing",
-  "longRunningOperations",
-  "contentModeration",
 ];
 
 const MOCK_MODELS: Record<string, Capability[]> = {
-  "mock-full": ALL_CAPABILITIES,
-  "mock-text-only": ["textGeneration", "structuredOutput", "promptEnhancement"],
+  "mock-full": FULL_CAPABILITIES,
+  "mock-text-only": ["textGeneration", "promptEnhancement"],
 };
 
 export class MockProviderError extends Error {
@@ -115,11 +112,16 @@ async function runMockCall<T>(
   triggerText: string,
   build: () => T
 ): Promise<T> {
+  // Pre-flight checks a real client/SDK would also reject locally, without a
+  // network round trip: expired token, unsupported feature, exhausted rate
+  // limit. These stay fast on purpose. Content-based rejections (fail/unsafe
+  // triggers) genuinely require the "provider" to look at the request, so
+  // they run after the simulated latency, same as a real success response.
   checkExpiry(credential);
   checkCapability(modelId, capability);
   recordCallAndCheckRateLimit(credential.connectionId);
-  checkTriggers(triggerText);
   await simulateLatency();
+  checkTriggers(triggerText);
   return build();
 }
 
@@ -136,7 +138,8 @@ export const mockProvider: AIProvider = {
     return { valid: true, maskedEnding: credential.apiKey.slice(-4) };
   },
 
-  async discoverModels(): Promise<ModelDescriptor[]> {
+  async discoverModels(credential: DecryptedCredential): Promise<ModelDescriptor[]> {
+    checkExpiry(credential);
     return Object.entries(MOCK_MODELS).map(([modelId, capabilities]) => ({
       modelId,
       displayName: modelId === "mock-full" ? "Mock (full capabilities)" : "Mock (text only)",
@@ -144,7 +147,8 @@ export const mockProvider: AIProvider = {
     }));
   },
 
-  async getCapabilities(_credential: DecryptedCredential, modelId = "mock-full"): Promise<ProviderCapabilities> {
+  async getCapabilities(credential: DecryptedCredential, modelId = "mock-full"): Promise<ProviderCapabilities> {
+    checkExpiry(credential);
     const capabilities = MOCK_MODELS[modelId];
     if (!capabilities) {
       throw new MockProviderError("invalid_credential", `Unknown mock model "${modelId}".`);

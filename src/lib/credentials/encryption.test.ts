@@ -48,6 +48,12 @@ describe("envelope encryption", () => {
     expect(() => unwrapStoredCredential(tampered)).toThrow();
   });
 
+  it("rejects a record whose stored algorithm label doesn't match what's actually implemented", () => {
+    const wrapped = wrapCredentialForStorage("sk-tamper-algorithm");
+    const tampered = { ...wrapped, encryptionAlgorithm: "aes-128-cbc" };
+    expect(() => unwrapStoredCredential(tampered)).toThrow();
+  });
+
   it("fails to decrypt when the wrapped data key is tampered with", () => {
     const wrapped = wrapCredentialForStorage("sk-tamper-test-3");
     const tampered = { ...wrapped, encryptedDataKey: Buffer.from(wrapped.encryptedDataKey) };

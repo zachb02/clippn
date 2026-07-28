@@ -1,16 +1,16 @@
--- Clipforge Phase 1 core schema.
--- Targets Supabase Postgres (references auth.users, the schema Supabase Auth
--- manages). For plain local Postgres verification (no Supabase running),
--- see scripts/local-auth-stub.sql, which creates a minimal stand-in
--- auth.users table for FK purposes only - that stub is NOT part of this
--- migration and is never applied against a real Supabase project.
+-- Clippn Phase 1 core schema.
+-- Clippn has no hosted backend and no accounts: every clone runs against
+-- its own local Postgres, with a single local-user row auto-provisioned by
+-- the app (see src/lib/local-user.ts). There is no auth.users table and no
+-- row-level security -- a local single-user database has no other tenant
+-- to isolate from.
 
 create extension if not exists pgcrypto;
 
 -- ── Identity ─────────────────────────────────────────────────────────────
 
 create table if not exists profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
   display_name text,
   avatar_url text,
   created_at timestamptz not null default now(),

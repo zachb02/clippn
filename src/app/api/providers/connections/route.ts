@@ -77,13 +77,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not create the connection." }, { status: 500 });
   }
 
-  if (storageMode === "session") {
-    // Never written to provider_credentials in this mode -- session-only,
-    // encrypted, TTL-bound, deleted on disconnect.
-    await storeSessionCredential(connection.id, apiKey, SESSION_CREDENTIAL_TTL_SECONDS);
-  } else {
-    const wrapped = wrapCredentialForStorage(apiKey);
-    try {
+  // Whichever storage step runs, any failure in it must roll back the
+  // connection row -- a "connected" row with no reachable credential behind
+  // it is worse than no row at all.
+  try {
+    if (storageMode === "session") {
+      // Never written to provider_credentials in this mode -- session-only,
+      // encrypted, TTL-bound, deleted on disconnect.
+      await storeSessionCredential(connection.id, apiKey, SESSION_CREDENTIAL_TTL_SECONDS);
+    } else {
+      const wrapped = wrapCredentialForStorage(apiKey);
       await query(
         `insert into provider_credentials
            (connection_id, encrypted_data_key, encrypted_credential, encryption_algorithm, key_version, nonce, auth_tag)
@@ -98,12 +101,10 @@ export async function POST(request: Request) {
           wrapped.authTag,
         ]
       );
-    } catch {
-      // Roll back the connection row rather than leave an unusable "connected"
-      // connection with no credential behind it.
-      await query(`delete from provider_connections where id = $1`, [connection.id]);
-      return NextResponse.json({ error: "Could not store the credential securely." }, { status: 500 });
     }
+  } catch {
+    await query(`delete from provider_connections where id = $1`, [connection.id]);
+    return NextResponse.json({ error: "Could not store the credential securely." }, { status: 500 });
   }
 
   return NextResponse.json({ connection }, { status: 201 });

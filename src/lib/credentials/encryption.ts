@@ -93,6 +93,12 @@ export function wrapCredentialForStorage(plaintextApiKey: string): WrappedCreden
  * provider request -- never from a route that returns a response to the browser.
  */
 export function unwrapStoredCredential(wrapped: WrappedCredential): string {
+  if (wrapped.encryptionAlgorithm !== ALGORITHM) {
+    // The algorithm label is stored alongside the ciphertext but only one
+    // algorithm is ever implemented -- a mismatched label means the record
+    // was corrupted or tampered with, not that it needs a different cipher.
+    throw new Error(`Unsupported encryption algorithm "${wrapped.encryptionAlgorithm}".`);
+  }
   const masterKey = getMasterKey();
   const dekNonce = wrapped.encryptedDataKey.subarray(0, IV_LENGTH_BYTES);
   const dekAuthTag = wrapped.encryptedDataKey.subarray(IV_LENGTH_BYTES, IV_LENGTH_BYTES + 16);
