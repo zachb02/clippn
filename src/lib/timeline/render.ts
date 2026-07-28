@@ -265,7 +265,7 @@ function wrapToWidth(text: string, fontSizePx: number, maxWidth: number): string
   return lines;
 }
 
-async function renderCaptionPng(
+export async function renderCaptionPng(
   textContent: NonNullable<TimelineClipT["textContent"]>,
   width: number,
   height: number

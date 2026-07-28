@@ -65,7 +65,17 @@ export function ConnectionForm() {
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger id="provider" className="mt-1.5 w-full">
-                  <SelectValue placeholder="Choose a provider" />
+                  <SelectValue placeholder="Choose a provider">
+                    {(value: string | null) =>
+                      value === "mock"
+                        ? "Mock Provider (no real key needed)"
+                        : value === "google-gemini"
+                          ? "Google Gemini"
+                          : value === "openai"
+                            ? "OpenAI"
+                            : "Choose a provider"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mock">Mock Provider (no real key needed)</SelectItem>

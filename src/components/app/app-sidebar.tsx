@@ -21,7 +21,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof House; built: boole
   { href: "/app", label: "Home", icon: House, built: true },
   { href: "/app/projects", label: "Projects", icon: FolderOpen, built: true },
   { href: "/app/create", label: "Create", icon: Plus, built: false },
-  { href: "/app/auto-clip", label: "Auto Clip", icon: Scissors, built: false },
+  { href: "/app/auto-clip", label: "Auto Clip", icon: Scissors, built: true },
   { href: "/app/templates", label: "Templates", icon: SquaresFour, built: false },
   { href: "/app/editor", label: "Editor", icon: PencilSimple, built: false },
   { href: "/app/assets", label: "Assets", icon: ImageSquare, built: false },

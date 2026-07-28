@@ -20,3 +20,9 @@ export function getDefaultTranscriptionModelId(provider: ProviderId): string {
   if (provider === "openai") return "whisper-1";
   return "mock-full";
 }
+
+export function getDefaultTextModelId(provider: ProviderId): string {
+  if (provider === "openai") return "gpt-4o-mini";
+  if (provider === "google-gemini") return "gemini-2.0-flash";
+  return "mock-full";
+}

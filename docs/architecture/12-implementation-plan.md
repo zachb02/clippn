@@ -94,10 +94,48 @@ Both routes now resolve a real per-provider default via `src/lib/ai/default-mode
 model like Demucs — nothing in this stack does that yet, and faking it with an EQ pass
 would be dishonest, so it stays unbuilt rather than approximated).
 
-## Phase 5 — Primary creation workflows (NOT YET BUILT)
+## Phase 5 — Primary creation workflows (Auto Clip BUILT, rest NOT YET BUILT)
 
-Auto Clip, Split-Screen Video, Reddit-style Story Video, Fictional Chat Story Video
-(with disclosure metadata), Streamer Clip, Idea-to-Short, full advanced timeline
+**Auto Clip** — the flagship workflow, built and verified end-to-end for real:
+`POST /api/auto-clip` accepts an uploaded long-form video + a provider connection, then:
+1. Real ffprobe validation (`inspectMedia`) of the actual uploaded bytes.
+2. Saves the source as a real project asset (creates a project with `workflow: 'auto-clip'`).
+3. Real transcription of the actual video (OpenAI Whisper directly accepts mp4 -- no audio
+   extraction step needed) via the same adapter built in Phase 3/4.
+4. A real `generateText` call asks the model to select up to 5 highlight ranges as strict
+   JSON, defensively parsed (`src/lib/schemas/auto-clip.ts` strips markdown fences and
+   validates via Zod) and clamped against the video's real duration -- a hallucinated
+   out-of-range or backwards timestamp is clamped or skipped, never rendered broken.
+5. Each highlight is rendered for real (`src/lib/timeline/auto-clip-render.ts`): trim to
+   range, reframe to a 1080x1920 vertical canvas (scale+crop, not letterboxing), and burn in
+   the *real* transcript captions overlapping that range (time-shifted to the clip's own
+   local timeline) -- reusing the exact sharp/SVG + FFmpeg `overlay` technique from the
+   Phase 2 timeline renderer rather than reimplementing caption compositing. Only the
+   highlight *boundaries* come from the LLM; the caption *text* is always the real
+   transcript, never LLM-invented.
+6. Each rendered clip is verified via `inspectMedia` on its own output (not just "ffmpeg
+   exited 0") and saved as a real project asset.
+
+Also fixed as a prerequisite: `mock-provider.ts`'s `generateText` returned a generic
+"Simulated response for: ..." string, which isn't valid JSON -- this would have made Auto
+Clip's highlight-selection step fail even in Mock Provider mode, undermining the whole
+point of Mock mode ("every capability's success... demoed with zero external dependency").
+It now recognizes this prompt shape and fabricates a plausible JSON answer grounded in the
+real timestamp brackets already embedded in the prompt.
+
+Verified end-to-end: a real ffmpeg-generated 30-second synthetic video, run through the
+actual browser UI (upload, connection select, Generate Clips), produced 3 real playable
+1080x1920 vertical clips with real captions burned in (confirmed via ffprobe + a visual
+frame-grab, not just a 201 response).
+
+Also fixed in the same pass: Base UI's `Select.Value` renders the raw selected `value`
+string by default, not the matching item's label, unless given a render-prop child or the
+root's `items` map -- this silently broke the Auto Clip connection picker (showing a raw
+UUID) and, it turns out, the pre-existing provider-connection form too (showing "mock"
+instead of "Mock Provider..."). Both now pass an explicit render function.
+
+**Not yet built:** Split-Screen Video, Reddit-style Story Video, Fictional Chat Story
+Video (with disclosure metadata), Streamer Clip, Idea-to-Short, full advanced timeline
 editor (effects, keyframes, multi-select, snapping, virtualization, absolute-position/
 gap-aware compositing), batch rendering.
 

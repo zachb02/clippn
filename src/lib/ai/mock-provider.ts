@@ -129,6 +129,40 @@ function mockSegments(durationSeconds?: number): { start: number; end: number; t
   return segments;
 }
 
+/**
+ * Auto Clip asks for a strict JSON array of {startSeconds,endSeconds,title}
+ * clip candidates. A generic "Simulated response for: ..." string isn't
+ * valid JSON, which would make Auto Clip untestable in Mock Provider mode
+ * -- defeating the whole point of Mock mode ("every capability's success...
+ * demoed and tested with zero external dependency"). Instead, recognize
+ * this prompt shape and fabricate a plausible answer using the REAL
+ * timestamp brackets already embedded in the prompt (Auto Clip writes each
+ * transcript line as "[start-end] text"), so the mock's output is at least
+ * grounded in real numbers from the actual request, not just placeholder
+ * text pretending to be data.
+ */
+function mockGenerateTextBody(prompt: string): string {
+  if (prompt.includes("JSON array") && prompt.includes("startSeconds")) {
+    const bracketPattern = /\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\]/g;
+    const ranges: { start: number; end: number }[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = bracketPattern.exec(prompt)) !== null) {
+      ranges.push({ start: Number(match[1]), end: Number(match[2]) });
+    }
+    const candidateCount = Math.min(3, Math.max(1, ranges.length));
+    const highlights = Array.from({ length: candidateCount }, (_, i) => {
+      const range = ranges[i] ?? { start: i * 10, end: i * 10 + 8 };
+      return {
+        startSeconds: range.start,
+        endSeconds: Math.max(range.end, range.start + 5),
+        title: `Simulated highlight ${i + 1} (Mock Provider)`,
+      };
+    });
+    return JSON.stringify(highlights);
+  }
+  return `Simulated response (Mock Provider) for: "${prompt.slice(0, 80)}"`;
+}
+
 async function simulateLatency(): Promise<void> {
   const delay = 400 + Math.random() * 2100;
   await new Promise((resolve) => setTimeout(resolve, delay));
@@ -195,7 +229,7 @@ export const mockProvider: AIProvider = {
     credential: DecryptedCredential
   ): Promise<TextGenerationResult> {
     return runMockCall(credential, input.modelId, "textGeneration", input.prompt, () => ({
-      text: `Simulated response (Mock Provider) for: "${input.prompt.slice(0, 80)}"`,
+      text: mockGenerateTextBody(input.prompt),
       modelId: input.modelId,
       mock: true as const,
     }));
