@@ -2,16 +2,11 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { CreateConnectionSchema } from "@/lib/schemas/provider-connection";
-import { mockProvider } from "@/lib/ai/mock-provider";
+import { getProvider } from "@/lib/ai/registry";
 import { wrapCredentialForStorage } from "@/lib/credentials/encryption";
 import { storeSessionCredential } from "@/lib/credentials/session-store";
 
 const SESSION_CREDENTIAL_TTL_SECONDS = 60 * 60 * 12; // 12h, matches SESSION_CREDENTIAL_TTL_HOURS default
-
-// Phase 1 only implements a real adapter for the mock provider (see
-// docs/architecture/12-implementation-plan.md). google-gemini/openai
-// connections are refused here rather than silently skipping validation.
-const IMPLEMENTED_PROVIDERS = new Set(["mock"]);
 
 interface ConnectionRow {
   id: string;
@@ -47,18 +42,25 @@ export async function POST(request: Request) {
   }
   const { provider, label, apiKey, storageMode } = parsed.data;
 
-  if (!IMPLEMENTED_PROVIDERS.has(provider)) {
-    return NextResponse.json(
-      { error: `The ${provider} adapter isn't implemented yet. Use the Mock Provider for now.` },
-      { status: 400 }
-    );
+  let providerAdapter;
+  try {
+    providerAdapter = getProvider(provider);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "This provider isn't supported.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const validation = await mockProvider.validateCredential({
-    connectionId: "pending",
-    provider,
-    apiKey,
-  });
+  let validation;
+  try {
+    validation = await providerAdapter.validateCredential({
+      connectionId: "pending",
+      provider,
+      apiKey,
+    });
+  } catch (error) {
+    const normalized = providerAdapter.normalizeError(error);
+    return NextResponse.json({ error: normalized.message }, { status: 422 });
+  }
   if (!validation.valid) {
     return NextResponse.json(
       { error: validation.reason === "expired_credential" ? "This credential has expired." : "This credential is invalid." },
