@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -38,9 +38,10 @@ export function ProjectDashboard({ initialProjects }: { initialProjects: Project
   const [title, setTitle] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const renameInFlightRef = useRef(false);
 
   async function handleCreate() {
-    if (!title.trim()) return;
+    if (creating || !title.trim()) return;
     setCreating(true);
     try {
       const response = await fetch("/api/projects", {
@@ -63,19 +64,30 @@ export function ProjectDashboard({ initialProjects }: { initialProjects: Project
   }
 
   async function handleRename(id: string) {
-    if (!renameValue.trim()) return;
-    const response = await fetch(`/api/projects/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: renameValue.trim() }),
-    });
-    if (!response.ok) {
-      toast.error("Could not rename the project.");
-      return;
+    // Enter and blur can both fire for the same edit (Enter blurs the
+    // input as a side effect); this guard makes the second call a no-op
+    // instead of issuing a duplicate PATCH that could resolve out of order.
+    if (renameInFlightRef.current || !renameValue.trim()) return;
+    renameInFlightRef.current = true;
+    try {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: renameValue.trim() }),
+      });
+      if (!response.ok) {
+        toast.error("Could not rename the project.");
+        return;
+      }
+      toast.success("Renamed.");
+      // Only clear if this is still the active edit -- a newer rename
+      // started on a different card while this request was in flight
+      // must not have its editor closed out from under it.
+      setRenamingId((current) => (current === id ? null : current));
+      router.refresh();
+    } finally {
+      renameInFlightRef.current = false;
     }
-    toast.success("Renamed.");
-    setRenamingId(null);
-    router.refresh();
   }
 
   async function handleArchive(id: string) {

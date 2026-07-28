@@ -99,6 +99,11 @@ export function unwrapStoredCredential(wrapped: WrappedCredential): string {
     // was corrupted or tampered with, not that it needs a different cipher.
     throw new Error(`Unsupported encryption algorithm "${wrapped.encryptionAlgorithm}".`);
   }
+  if (wrapped.keyVersion !== 1) {
+    // Same reasoning as the algorithm check: only version 1 has ever been
+    // produced, so any other value means the stored record was corrupted.
+    throw new Error(`Unsupported credential key version ${wrapped.keyVersion}.`);
+  }
   const masterKey = getMasterKey();
   const dekNonce = wrapped.encryptedDataKey.subarray(0, IV_LENGTH_BYTES);
   const dekAuthTag = wrapped.encryptedDataKey.subarray(IV_LENGTH_BYTES, IV_LENGTH_BYTES + 16);

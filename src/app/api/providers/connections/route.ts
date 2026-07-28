@@ -103,7 +103,14 @@ export async function POST(request: Request) {
       );
     }
   } catch {
-    await query(`delete from provider_connections where id = $1`, [connection.id]);
+    try {
+      await query(`delete from provider_connections where id = $1`, [connection.id]);
+    } catch {
+      // Rollback itself failed -- the connection row may remain without a
+      // reachable credential. Still return a clean error rather than an
+      // unhandled rejection; a stray row is recoverable by hand, a crashed
+      // response is not.
+    }
     return NextResponse.json({ error: "Could not store the credential securely." }, { status: 500 });
   }
 

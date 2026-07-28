@@ -54,6 +54,12 @@ describe("envelope encryption", () => {
     expect(() => unwrapStoredCredential(tampered)).toThrow();
   });
 
+  it("rejects a record whose stored key version doesn't match the one version ever produced", () => {
+    const wrapped = wrapCredentialForStorage("sk-tamper-keyversion");
+    const tampered = { ...wrapped, keyVersion: 2 };
+    expect(() => unwrapStoredCredential(tampered)).toThrow();
+  });
+
   it("fails to decrypt when the wrapped data key is tampered with", () => {
     const wrapped = wrapCredentialForStorage("sk-tamper-test-3");
     const tampered = { ...wrapped, encryptedDataKey: Buffer.from(wrapped.encryptedDataKey) };

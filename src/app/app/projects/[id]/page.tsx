@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { z } from "zod";
 import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { Badge } from "@/components/ui/badge";
@@ -6,14 +7,20 @@ import type { ProjectRow } from "@/app/api/projects/route";
 
 export const dynamic = "force-dynamic";
 
+const ProjectIdSchema = z.string().uuid();
+
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const parsedId = ProjectIdSchema.safeParse(id);
+  if (!parsedId.success) {
+    notFound();
+  }
   const userId = await getOrCreateLocalUserId();
 
   const [project] = await query<ProjectRow>(
     `select id, workflow, title, status, aspect_ratio, duration_seconds, created_at, updated_at
      from projects where id = $1 and user_id = $2`,
-    [id, userId]
+    [parsedId.data, userId]
   );
 
   if (!project) {

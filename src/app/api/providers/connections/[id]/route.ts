@@ -15,25 +15,23 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Invalid connection id." }, { status: 400 });
   }
 
-  const [connection] = await query<{ storage_mode: string }>(
-    `select storage_mode from provider_connections where id = $1 and user_id = $2`,
+  // Delete and check ownership in the same statement -- no separate SELECT,
+  // so there's no window for the row to change between checking it exists
+  // and removing it.
+  const [deletedConnection] = await query<{ storage_mode: string }>(
+    `delete from provider_connections where id = $1 and user_id = $2 returning storage_mode`,
     [parsedId.data, userId]
   );
-  if (!connection) {
+  if (!deletedConnection) {
     return NextResponse.json({ error: "Connection not found." }, { status: 404 });
   }
 
-  if (connection.storage_mode === "session") {
-    try {
-      await deleteSessionCredential(parsedId.data);
-    } catch {
-      // Leave the connection row in place so disconnect can be retried,
-      // rather than deleting Postgres metadata while the encrypted
-      // credential is left stranded in Redis with no way to reach it.
-      return NextResponse.json({ error: "Could not disconnect. Try again." }, { status: 500 });
-    }
+  if (deletedConnection.storage_mode === "session") {
+    // The Postgres row is already gone at this point regardless of whether
+    // this succeeds; a failure here just means the encrypted credential
+    // waits out its TTL in Redis instead of being removed immediately.
+    await deleteSessionCredential(parsedId.data).catch(() => {});
   }
 
-  await query(`delete from provider_connections where id = $1 and user_id = $2`, [parsedId.data, userId]);
   return NextResponse.json({ deleted: true });
 }

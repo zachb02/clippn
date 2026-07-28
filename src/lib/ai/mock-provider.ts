@@ -32,8 +32,11 @@ const FULL_CAPABILITIES: Capability[] = [
   "promptEnhancement",
   "imageGeneration",
   "imageEditing",
+  // Not wordLevelTimestamps: TranscriptResult only carries segment-level
+  // timing (see transcribeAudio below and types.ts), so declaring
+  // word-level granularity here would be a capability the mock can't
+  // actually satisfy.
   "transcription",
-  "wordLevelTimestamps",
   "textToSpeech",
 ];
 

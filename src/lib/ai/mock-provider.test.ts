@@ -125,8 +125,7 @@ describe("mock provider", () => {
         "promptEnhancement", // via generateText, not its own method
         "imageGeneration",
         "imageEditing",
-        "transcription",
-        "wordLevelTimestamps", // transcribeAudio returns segment timestamps
+        "transcription", // segment-level only -- not wordLevelTimestamps
         "textToSpeech",
       ])
     );

@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { query } from "@/lib/db";
 import { getOrCreateLocalUserId } from "@/lib/local-user";
 import { UpdateProjectSchema } from "@/lib/schemas/project";
 import type { ProjectRow } from "../route";
 
+const ProjectIdSchema = z.string().uuid();
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getOrCreateLocalUserId();
   const { id } = await params;
+
+  const parsedId = ProjectIdSchema.safeParse(id);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "Invalid project id." }, { status: 400 });
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = UpdateProjectSchema.safeParse(body);
@@ -31,7 +39,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   setClauses.push(`updated_at = now()`);
 
-  values.push(id, userId);
+  values.push(parsedId.data, userId);
   const [project] = await query<ProjectRow>(
     `update projects set ${setClauses.join(", ")}
      where id = $${paramIndex++} and user_id = $${paramIndex}
@@ -48,6 +56,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getOrCreateLocalUserId();
   const { id } = await params;
-  await query(`delete from projects where id = $1 and user_id = $2`, [id, userId]);
+
+  const parsedId = ProjectIdSchema.safeParse(id);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "Invalid project id." }, { status: 400 });
+  }
+
+  await query(`delete from projects where id = $1 and user_id = $2`, [parsedId.data, userId]);
   return NextResponse.json({ deleted: true });
 }

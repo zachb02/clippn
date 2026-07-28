@@ -74,9 +74,9 @@ create table if not exists provider_credentials (
   created_at timestamptz not null default now()
 );
 create index if not exists provider_credentials_connection_idx on provider_credentials (connection_id);
--- No column here is ever selected by any client-facing query or admin view.
--- Enforced by RLS (below) AND by never writing an application code path that
--- reads this table outside the credential-resolution service.
+-- No column here is ever selected by any client-facing query or admin view --
+-- enforced by never writing an application code path that reads this table
+-- outside the credential-resolution service (no RLS: single local user).
 
 create table if not exists provider_capability_snapshots (
   id uuid primary key default gen_random_uuid(),
@@ -246,8 +246,9 @@ create table if not exists consent_attestations (
   accepted_at timestamptz not null default now()
 );
 create index if not exists consent_attestations_user_idx on consent_attestations (user_id);
--- Immutable by policy: only insert + select policies are defined below,
--- deliberately no update/delete policy for any role.
+-- Intended to be immutable: application code should never expose an
+-- update/delete path for this table (no RLS to enforce it separately --
+-- single local user, no other tenant to protect against).
 
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
