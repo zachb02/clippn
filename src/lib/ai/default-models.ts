@@ -26,3 +26,8 @@ export function getDefaultTextModelId(provider: ProviderId): string {
   if (provider === "google-gemini") return "gemini-2.0-flash";
   return "mock-full";
 }
+
+export function getDefaultSpeechModelId(provider: ProviderId): string {
+  if (provider === "openai") return "tts-1";
+  return "mock-full";
+}
