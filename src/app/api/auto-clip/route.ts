@@ -106,10 +106,16 @@ export async function POST(request: Request) {
 
   let projectId: string | null = null;
   let sourceStoragePath: string | null = null;
+  let jobDir: string | null = null;
   const generatedStoragePaths: string[] = [];
-  const jobDir = await mkdtemp(path.join(tmpdir(), "clippn-auto-clip-"));
 
   try {
+    // mkdtemp must run inside the try -- it used to run before it, so a
+    // failure here (disk full, permissions) would skip the finally below
+    // entirely and permanently leak this activeJobs slot, eventually
+    // forcing every request to 429 forever.
+    jobDir = await mkdtemp(path.join(tmpdir(), "clippn-auto-clip-"));
+
     // The project (and, for a YouTube import, the recorded rights
     // attestation) is created BEFORE any download happens -- consent has
     // to precede the action it's consenting to, not follow it. Using a
@@ -343,6 +349,11 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
     return NextResponse.json({ error: message }, { status: 422 });
   } finally {
     activeJobs--;
-    await rm(jobDir, { recursive: true, force: true });
+    // A cleanup failure here must never override an already-returned
+    // response -- finally's own throw would replace a successful 201 with
+    // an unhandled 500 even though the clips were already saved.
+    if (jobDir) {
+      await rm(jobDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }

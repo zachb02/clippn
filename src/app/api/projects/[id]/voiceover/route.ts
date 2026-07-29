@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     let buffer: Buffer;
     try {
-      buffer = await resolveGeneratedMediaBuffer(speech.audioUrl);
+      buffer = await resolveGeneratedMediaBuffer(speech.audioUrl, "audio");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not read the generated voiceover audio.";
       return NextResponse.json({ error: message }, { status: 502 });

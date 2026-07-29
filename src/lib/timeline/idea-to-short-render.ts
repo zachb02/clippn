@@ -53,6 +53,11 @@ export async function renderIdeaToShort(input: RenderIdeaToShortInput): Promise<
     "-loop", "1",
     "-i", backgroundImagePath,
     "-i", audioPath,
+    // Explicit maps, not automatic stream selection -- if either input
+    // ever unexpectedly carried more than one stream type, FFmpeg's
+    // "pick the best" default could otherwise choose the wrong one.
+    "-map", "0:v",
+    "-map", "1:a",
     "-t", String(durationSeconds),
     "-vf", scaleFilter,
     "-r", "30",

@@ -64,10 +64,15 @@ export async function POST(request: Request) {
   activeJobs++;
 
   let projectId: string | null = null;
+  let jobDir: string | null = null;
   const savedStoragePaths: string[] = [];
-  const jobDir = await mkdtemp(path.join(tmpdir(), "clippn-idea-to-short-"));
 
   try {
+    // mkdtemp must run inside the try -- it used to run before it, so a
+    // failure here (disk full, permissions) would skip the finally below
+    // entirely and permanently leak this activeJobs slot, eventually
+    // forcing every request to 429 forever.
+    jobDir = await mkdtemp(path.join(tmpdir(), "clippn-idea-to-short-"));
     const [project] = await query<{ id: string }>(
       `insert into projects (user_id, title, workflow, status)
        values ($1, $2, 'idea-to-short', 'generating')
@@ -93,7 +98,7 @@ export async function POST(request: Request) {
       { text: script, modelId: getDefaultSpeechModelId(credential.provider) },
       credential
     );
-    const audioBuffer = await resolveGeneratedMediaBuffer(speech.audioUrl);
+    const audioBuffer = await resolveGeneratedMediaBuffer(speech.audioUrl, "audio");
     const audioPath = path.join(jobDir, "voiceover.mp3");
     await writeFile(audioPath, audioBuffer);
     const audioMetadata = await probeMedia(audioPath);
@@ -101,8 +106,14 @@ export async function POST(request: Request) {
       throw new IdeaToShortError(502, "The generated voiceover had no audio.");
     }
 
-    // Real captions from the real generated narration -- never invented,
-    // the same principle Auto Clip uses for its captions.
+    // Captions come from transcribing the actual generated narration audio
+    // -- never LLM-invented -- for any real provider (OpenAI's whisper-1
+    // genuinely transcribes the bytes at audioPath). The Mock Provider is
+    // the one exception: its transcribeAudio doesn't read audioPath at all
+    // (see mock-provider.ts), so in Mock mode these captions are equally
+    // fabricated placeholder text as everything else Mock returns -- that's
+    // inherent to what Mock mode is (simulated success, not real work),
+    // not a bug specific to this pipeline.
     const transcript = await provider.transcribeAudio(
       { audioUrl: audioPath, modelId: getDefaultTranscriptionModelId(credential.provider), durationSeconds: audioMetadata.durationSeconds },
       credential
@@ -113,7 +124,7 @@ export async function POST(request: Request) {
       { prompt: imagePrompt, modelId: getDefaultImageModelId(credential.provider) },
       credential
     );
-    const imageBuffer = await resolveGeneratedMediaBuffer(image.imageUrl);
+    const imageBuffer = await resolveGeneratedMediaBuffer(image.imageUrl, "image");
     const imagePath = path.join(jobDir, "background.png");
     await writeFile(imagePath, imageBuffer);
 
@@ -191,6 +202,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 422 });
   } finally {
     activeJobs--;
-    await rm(jobDir, { recursive: true, force: true });
+    // A cleanup failure here must never override an already-returned
+    // response -- finally's own throw would replace a successful 201 with
+    // an unhandled 500 even though the video was already saved.
+    if (jobDir) {
+      await rm(jobDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
