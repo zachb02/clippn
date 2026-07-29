@@ -10,6 +10,21 @@ const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILESIZE = "2G";
 
 const ALLOWED_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"]);
+// Real YouTube video ids are always exactly 11 characters from this
+// alphabet -- anchored so a trailing/leading extra character can't sneak
+// through, unlike a bare "has some non-empty path" check.
+const VIDEO_ID_PATTERN = /^[\w-]{11}$/;
+
+const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+  ".m4v": "video/mp4",
+};
+
+export function mimeTypeForExtension(extension: string): string | null {
+  return MIME_TYPE_BY_EXTENSION[extension.toLowerCase()] ?? null;
+}
 
 /**
  * Real URL parsing against an exact hostname allowlist, not a regex over
@@ -17,7 +32,10 @@ const ALLOWED_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com"
  * `https://evil.com/?u=youtube.com/watch?v=x`. This is also the only
  * server-side "fetch a user-supplied URL" path in the app; restricting it
  * to YouTube's own hosts keeps it out of the general SSRF surface the
- * security model otherwise bans entirely.
+ * security model otherwise bans entirely. Also validates the video id
+ * itself against YouTube's real 11-character id shape, not just "some
+ * non-empty path/query value" -- `watch?v=`, `youtu.be/-`, and
+ * `shorts/-` previously all passed as "valid".
  */
 export function isValidYoutubeUrl(url: string): boolean {
   let parsed: URL;
@@ -30,17 +48,19 @@ export function isValidYoutubeUrl(url: string): boolean {
     return false;
   }
   if (parsed.hostname === "youtu.be") {
-    return parsed.pathname.length > 1;
+    return VIDEO_ID_PATTERN.test(parsed.pathname.slice(1));
   }
   if (parsed.pathname === "/watch") {
-    return parsed.searchParams.has("v");
+    return VIDEO_ID_PATTERN.test(parsed.searchParams.get("v") ?? "");
   }
-  return /^\/shorts\/[\w-]+/.test(parsed.pathname);
+  const shortsMatch = /^\/shorts\/([\w-]+)$/.exec(parsed.pathname);
+  return shortsMatch !== null && VIDEO_ID_PATTERN.test(shortsMatch[1]);
 }
 
 export interface YoutubeDownloadResult {
   sourcePath: string;
   title: string;
+  mimeType: string | null;
 }
 
 /**
@@ -80,7 +100,9 @@ export async function downloadYoutubeVideo(url: string, jobDir: string): Promise
   } catch (error) {
     const stderr = (error as { stderr?: string } | null)?.stderr ?? "";
     if (stderr.includes("Private video")) throw new Error("This video is private and can't be imported.");
-    if (stderr.includes("age")) throw new Error("This video is age-restricted and can't be imported.");
+    if (stderr.includes("Sign in to confirm your age") || stderr.includes("age-restricted")) {
+      throw new Error("This video is age-restricted and can't be imported.");
+    }
     if (stderr.includes("nvailable")) {
       throw new Error("This video is unavailable (removed, region-blocked, or private).");
     }
@@ -94,5 +116,6 @@ export async function downloadYoutubeVideo(url: string, jobDir: string): Promise
     throw new Error("Could not download this YouTube video.");
   }
 
-  return { sourcePath: path.join(jobDir, downloaded), title };
+  const sourcePath = path.join(jobDir, downloaded);
+  return { sourcePath, title, mimeType: mimeTypeForExtension(path.extname(sourcePath)) };
 }

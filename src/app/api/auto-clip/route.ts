@@ -29,6 +29,14 @@ const MAX_CLIP_SECONDS = 90;
 // a substantial portion of a typical short/mid-length video.
 const MAX_TRANSCRIPT_CHARS = 12_000;
 const RIGHTS_STATEMENT_VERSION = "1";
+// This is a local, single-user app -- there's no per-account rate limiting
+// to speak of -- but a runaway loop or several browser tabs could still
+// stack up multiple 10-minute yt-dlp downloads / multi-GB in-memory
+// buffers on the user's own machine at once. A simple in-process
+// concurrency cap bounds that without inventing a distributed rate
+// limiter this single-process app has no use for.
+const MAX_CONCURRENT_JOBS = 2;
+let activeJobs = 0;
 
 interface GeneratedClip {
   assetId: string;
@@ -88,12 +96,53 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This provider doesn't support transcription and text generation, both required for Auto Clip." }, { status: 422 });
   }
 
+  if (activeJobs >= MAX_CONCURRENT_JOBS) {
+    return NextResponse.json(
+      { error: "Too many Auto Clip jobs are already running. Wait for one to finish and try again." },
+      { status: 429 }
+    );
+  }
+  activeJobs++;
+
   let projectId: string | null = null;
   let sourceStoragePath: string | null = null;
   const generatedStoragePaths: string[] = [];
   const jobDir = await mkdtemp(path.join(tmpdir(), "clippn-auto-clip-"));
 
   try {
+    // The project (and, for a YouTube import, the recorded rights
+    // attestation) is created BEFORE any download happens -- consent has
+    // to precede the action it's consenting to, not follow it. Using a
+    // placeholder title for the youtube path since the real title isn't
+    // known until after the download; it's updated below once it is.
+    const initialTitle = isUpload ? file.name.replace(/\.[^.]+$/, "").slice(0, 120) || "Auto Clip" : "YouTube Import";
+    const [project] = await query<{ id: string }>(
+      `insert into projects (user_id, title, workflow, status)
+       values ($1, $2, 'auto-clip', 'transcribing')
+       returning id`,
+      [userId, initialTitle]
+    );
+    if (!project) {
+      throw new AutoClipError(500, "Could not create a project for this clip.");
+    }
+    projectId = project.id;
+
+    if (isYoutube) {
+      // Real, recorded rights attestation -- not a checkbox that's
+      // discarded after submit -- consistent with how every other
+      // rights-sensitive import in this app's design is meant to work.
+      // The source URL is folded into the immutable statement text itself
+      // (this table has no dedicated source-url column and is designed to
+      // be insert-only/never updated) so the record stays self-describing
+      // even if the project it's attached to is later deleted.
+      await query(
+        `insert into consent_attestations
+           (user_id, project_id, kind, statement_version, statement_text, source_asset_ids, accepted_at)
+         values ($1, $2, 'rights_import', $3, $4, '{}', now())`,
+        [userId, projectId, RIGHTS_STATEMENT_VERSION, `${YOUTUBE_RIGHTS_STATEMENT}\n\nSource: ${youtubeUrl}`]
+      );
+    }
+
     let sourcePath: string;
     let sourceBuffer: Buffer;
     let originalFilename: string;
@@ -112,7 +161,8 @@ export async function POST(request: Request) {
         sourcePath = downloaded.sourcePath;
         sourceBuffer = await readFile(sourcePath);
         originalFilename = `${downloaded.title}${path.extname(sourcePath)}`;
-        mimeType = "video/mp4";
+        mimeType = downloaded.mimeType;
+        await query(`update projects set title = $2 where id = $1`, [projectId, downloaded.title.slice(0, 120)]);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not download this YouTube video.";
         throw new AutoClipError(422, message);
@@ -124,29 +174,6 @@ export async function POST(request: Request) {
     const metadata = await inspectMedia(sourcePath);
     if (!metadata.hasAudio) {
       throw new AutoClipError(422, "This video has no audio track to transcribe.");
-    }
-
-    const [project] = await query<{ id: string }>(
-      `insert into projects (user_id, title, workflow, status)
-       values ($1, $2, 'auto-clip', 'transcribing')
-       returning id`,
-      [userId, originalFilename.replace(/\.[^.]+$/, "").slice(0, 120) || "Auto Clip"]
-    );
-    if (!project) {
-      throw new AutoClipError(500, "Could not create a project for this clip.");
-    }
-    projectId = project.id;
-
-    if (isYoutube) {
-      // Real, recorded rights attestation -- not a checkbox that's
-      // discarded after submit -- consistent with how every other
-      // rights-sensitive import in this app's design is meant to work.
-      await query(
-        `insert into consent_attestations
-           (user_id, project_id, kind, statement_version, statement_text, source_asset_ids, accepted_at)
-         values ($1, $2, 'rights_import', $3, $4, '{}', now())`,
-        [userId, projectId, RIGHTS_STATEMENT_VERSION, YOUTUBE_RIGHTS_STATEMENT]
-      );
     }
 
     const savedSource = await saveAsset(projectId, sourceBuffer, originalFilename);
@@ -289,12 +316,16 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
   } catch (error) {
     // Roll back anything already written, permanent storage or database --
     // a failed Auto Clip run shouldn't leave orphaned files or dangling
-    // rows behind. Delete the asset rows before the project: assets.
-    // project_id is ON DELETE SET NULL, not CASCADE, so deleting the
+    // asset/project rows behind. Delete the asset rows before the project:
+    // assets.project_id is ON DELETE SET NULL, not CASCADE, so deleting the
     // project first would leave orphaned asset rows (project_id nulled)
     // still pointing at files this same block is about to delete.
-    // consent_attestations.project_id is also ON DELETE SET NULL, so it's
-    // never left referencing a deleted project either way.
+    // consent_attestations is deliberately left alone here: it's an
+    // insert-only audit table (see its schema comment) recording that
+    // rights consent was genuinely given for that URL at that time, which
+    // remains true regardless of whether the technical pipeline
+    // afterward succeeded -- its project_id nulling on project deletion is
+    // the FK's own correct behavior, not a bug to work around.
     if (projectId) {
       await query(`delete from assets where project_id = $1`, [projectId]).catch(() => {});
       await query(`delete from projects where id = $1`, [projectId]).catch(() => {});
@@ -311,6 +342,7 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
     const message = error instanceof Error ? error.message : "Could not generate clips from this video.";
     return NextResponse.json({ error: message }, { status: 422 });
   } finally {
+    activeJobs--;
     await rm(jobDir, { recursive: true, force: true });
   }
 }
