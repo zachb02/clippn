@@ -35,6 +35,21 @@ interface GeneratedClip {
   durationSeconds: number;
 }
 
+/**
+ * Thrown for every "expected" failure inside the pipeline (bad input,
+ * nothing transcribable, no valid clips, ...) instead of returning a
+ * response directly from inside the try block. Every failure -- expected or
+ * not -- must go through the same catch block so the same rollback always
+ * runs; a `return` from inside `try` would skip it.
+ */
+class AutoClipError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export async function POST(request: Request) {
   const userId = await getOrCreateLocalUserId();
 
@@ -74,7 +89,7 @@ export async function POST(request: Request) {
     // filename/MIME. Also enforces the existing duration/resolution caps.
     const metadata = await inspectMedia(sourcePath);
     if (!metadata.hasAudio) {
-      return NextResponse.json({ error: "This video has no audio track to transcribe." }, { status: 422 });
+      throw new AutoClipError(422, "This video has no audio track to transcribe.");
     }
 
     const [project] = await query<{ id: string }>(
@@ -84,7 +99,7 @@ export async function POST(request: Request) {
       [userId, file.name.replace(/\.[^.]+$/, "").slice(0, 120) || "Auto Clip"]
     );
     if (!project) {
-      return NextResponse.json({ error: "Could not create a project for this clip." }, { status: 500 });
+      throw new AutoClipError(500, "Could not create a project for this clip.");
     }
     projectId = project.id;
 
@@ -120,7 +135,7 @@ export async function POST(request: Request) {
     );
 
     if (transcript.segments.length === 0) {
-      return NextResponse.json({ error: "Couldn't transcribe any speech in this video to find clip-worthy moments." }, { status: 422 });
+      throw new AutoClipError(422, "Couldn't transcribe any speech in this video to find clip-worthy moments.");
     }
 
     await query(`update projects set status = 'generating' where id = $1`, [projectId]);
@@ -147,7 +162,7 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
       highlights = parseAutoClipHighlights(textResult.text);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not parse the AI's clip selection.";
-      return NextResponse.json({ error: message }, { status: 502 });
+      throw new AutoClipError(502, message);
     }
 
     const clips: GeneratedClip[] = [];
@@ -155,15 +170,16 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
 
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      // Clamp against reality -- the model's timestamps are a suggestion,
-      // not a guarantee. A clip that's out of range, backwards, or absurdly
-      // short/long after clamping is skipped rather than rendered broken.
-      const startSeconds = Math.max(0, Math.min(candidate.startSeconds, metadata.durationSeconds - MIN_CLIP_SECONDS));
-      const endSeconds = Math.min(
-        metadata.durationSeconds,
-        Math.max(startSeconds + MIN_CLIP_SECONDS, Math.min(candidate.endSeconds, startSeconds + MAX_CLIP_SECONDS))
-      );
-      if (endSeconds - startSeconds < MIN_CLIP_SECONDS) continue;
+      // Clamp against reality without inventing a different range: only
+      // trim the candidate's own span down to fit inside the video and
+      // under MAX_CLIP_SECONDS. If what's left doesn't reach
+      // MIN_CLIP_SECONDS, skip it -- never substitute an unrelated window
+      // elsewhere in the video just to hit a minimum length.
+      if (candidate.startSeconds >= metadata.durationSeconds) continue;
+      const startSeconds = Math.max(0, candidate.startSeconds);
+      const cappedEnd = Math.min(candidate.endSeconds, metadata.durationSeconds, startSeconds + MAX_CLIP_SECONDS);
+      if (cappedEnd - startSeconds < MIN_CLIP_SECONDS) continue;
+      const endSeconds = cappedEnd;
 
       const overlappingCaptions = transcript.segments
         .filter((s) => s.end > startSeconds && s.start < endSeconds)
@@ -216,23 +232,31 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
     }
 
     if (clips.length === 0) {
-      return NextResponse.json({ error: "Couldn't generate any valid clips from this video." }, { status: 422 });
+      throw new AutoClipError(422, "Couldn't generate any valid clips from this video.");
     }
 
     await query(`update projects set status = 'completed' where id = $1`, [projectId]);
 
     return NextResponse.json({ projectId, clips }, { status: 201 });
   } catch (error) {
-    // Roll back anything already written to permanent storage -- a failed
-    // Auto Clip run shouldn't leave orphaned files with no complete record.
+    // Roll back anything already written, permanent storage or database --
+    // a failed Auto Clip run shouldn't leave orphaned files or dangling
+    // rows behind. Delete the asset rows before the project: assets.
+    // project_id is ON DELETE SET NULL, not CASCADE, so deleting the
+    // project first would leave orphaned asset rows (project_id nulled)
+    // still pointing at files this same block is about to delete.
+    if (projectId) {
+      await query(`delete from assets where project_id = $1`, [projectId]).catch(() => {});
+      await query(`delete from projects where id = $1`, [projectId]).catch(() => {});
+    }
     for (const storagePath of generatedStoragePaths) {
       await deleteAsset(storagePath);
     }
     if (sourceStoragePath) {
       await deleteAsset(sourceStoragePath);
     }
-    if (projectId) {
-      await query(`delete from projects where id = $1`, [projectId]).catch(() => {});
+    if (error instanceof AutoClipError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     const message = error instanceof Error ? error.message : "Could not generate clips from this video.";
     return NextResponse.json({ error: message }, { status: 422 });

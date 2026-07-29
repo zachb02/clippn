@@ -142,7 +142,13 @@ function mockSegments(durationSeconds?: number): { start: number; end: number; t
  * text pretending to be data.
  */
 function mockGenerateTextBody(prompt: string): string {
-  if (prompt.includes("JSON array") && prompt.includes("startSeconds")) {
+  // A short substring like "JSON array"+"startSeconds" can appear inside an
+  // unrelated feature's prompt if a user's own input happens to contain
+  // those words (e.g. Content Brainstorm interpolates the user's topic
+  // verbatim) -- match the longer, near-unique instruction phrase from this
+  // route's own template instead, which is far less likely to occur by
+  // accident in arbitrary user text.
+  if (prompt.includes("of up to 5 clip candidates") && prompt.includes("startSeconds")) {
     const bracketPattern = /\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\]/g;
     const ranges: { start: number; end: number }[] = [];
     let match: RegExpExecArray | null;

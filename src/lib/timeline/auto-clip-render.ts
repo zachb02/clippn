@@ -112,8 +112,13 @@ export async function renderAutoClipSegment(input: RenderAutoClipSegmentInput): 
     inputArgs.push("-loop", "1", "-t", String(captionDuration), "-i", pngPath);
     const inputIndex = i + 1;
     const outLabel = `ov${i}`;
+    // FFmpeg's between() is inclusive at both ends, so back-to-back
+    // captions (caption A ending exactly when caption B starts) would both
+    // be active on the shared boundary frame -- nudge the end down a hair
+    // so adjacent captions don't visibly double up for one frame.
+    const enableEnd = Math.max(caption.start, caption.end - 0.01);
     filterParts.push(
-      `[${lastLabel}][${inputIndex}:v]overlay=0:main_h-overlay_h-160:enable='between(t,${caption.start},${caption.end})'[${outLabel}]`
+      `[${lastLabel}][${inputIndex}:v]overlay=0:main_h-overlay_h-160:enable='between(t,${caption.start},${enableEnd})'[${outLabel}]`
     );
     lastLabel = outLabel;
   }
