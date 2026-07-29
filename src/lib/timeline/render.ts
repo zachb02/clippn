@@ -241,7 +241,12 @@ async function burnInTextOverlays(
 }
 
 export function escapeXml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // XML forbids most C0 control characters in text content outright (not
+  // just the reserved &/</> characters) -- sharp throws "PCDATA invalid
+  // Char value" if one reaches the SVG. Strip them first; tab/LF/CR are
+  // the only C0 codepoints XML actually permits, so keep those.
+  const withoutControlChars = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+  return withoutControlChars.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** Rough monospace-independent estimate for bold sans-serif -- good enough

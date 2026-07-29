@@ -81,7 +81,11 @@ export async function POST(request: Request) {
       { prompt: titlePrompt, modelId: getDefaultTextModelId(credential.provider) },
       credential
     );
-    const title = titleResult.text.trim().replace(/^["']|["']$/g, "").slice(0, 200);
+    // Clamped to match what the prompt actually asked for ("under 100
+    // characters"), not the far looser 200 used previously -- a title
+    // near the wrap budget's edge can, combined with the story card's own
+    // 8-line cap, lose its last few words off the bottom of the card.
+    const title = titleResult.text.trim().replace(/^["']|["']$/g, "").slice(0, 100);
     if (!title) {
       throw new RedditStoryError(502, "Could not generate a story title.");
     }
