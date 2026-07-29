@@ -253,3 +253,61 @@ export async function enhanceSpeech(input: EnhanceSpeechInput): Promise<void> {
     input.outputPath,
   ]);
 }
+
+export interface SplitScreenInput {
+  topPath: string;
+  bottomPath: string;
+  outputPath: string;
+  /** vertical = top/bottom stack (the usual shorts layout); horizontal = side by side. */
+  layout: "vertical" | "horizontal";
+  audioSource: "top" | "bottom";
+  canvasWidth?: number;
+  canvasHeight?: number;
+}
+
+/**
+ * Combines two video sources into one canvas (aspect-preserving upscale +
+ * centered crop per half, the same reframing technique used everywhere
+ * else in this codebase) and stacks them with a single real FFmpeg
+ * filter_complex call. Audio comes from exactly one chosen source --
+ * `?` on the map is FFmpeg's own "map this stream if it exists, otherwise
+ * skip silently" syntax, so a source with no audio just produces a silent
+ * output rather than a crash.
+ */
+export async function renderSplitScreen(input: SplitScreenInput): Promise<void> {
+  const canvasWidth = input.canvasWidth ?? 1080;
+  const canvasHeight = input.canvasHeight ?? 1920;
+  const cellWidth = input.layout === "horizontal" ? Math.floor(canvasWidth / 2) : canvasWidth;
+  const cellHeight = input.layout === "vertical" ? Math.floor(canvasHeight / 2) : canvasHeight;
+
+  // `-shortest` only trims based on the mapped streams' own packet
+  // timestamps -- once vstack/hstack has already merged two inputs of
+  // different lengths into a single [v] stream, there's nothing left for
+  // `-shortest` to compare, and the merged filter just holds/repeats the
+  // shorter source's last frame instead of truncating (verified directly:
+  // an 8s + 5s pair produced an 8s output, not 5s). Probe both sources for
+  // their real duration and explicitly trim the output to the shorter one.
+  const [topMeta, bottomMeta] = await Promise.all([probeMedia(input.topPath), probeMedia(input.bottomPath)]);
+  const durationSeconds = Math.min(topMeta.durationSeconds, bottomMeta.durationSeconds);
+
+  const scale = (index: number, label: string) =>
+    `[${index}:v]scale=${cellWidth}:${cellHeight}:force_original_aspect_ratio=increase,crop=${cellWidth}:${cellHeight},setsar=1[${label}]`;
+
+  const stackFilter = input.layout === "vertical" ? "[top][bottom]vstack=inputs=2[v]" : "[top][bottom]hstack=inputs=2[v]";
+  const filterComplex = [scale(0, "top"), scale(1, "bottom"), stackFilter].join(";");
+  const audioMap = input.audioSource === "top" ? "0:a?" : "1:a?";
+
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    "-i", input.topPath,
+    "-i", input.bottomPath,
+    "-filter_complex", filterComplex,
+    "-map", "[v]",
+    "-map", audioMap,
+    "-t", String(durationSeconds),
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-c:a", "aac",
+    input.outputPath,
+  ]);
+}

@@ -181,10 +181,28 @@ used to live only in the voiceover route. Verified: `synthesizeSpeech` exercised
 against the real OpenAI API with a fake key (clean normalized 401, no crash); the Mock
 Provider voiceover path re-verified end-to-end through the real route after the refactor.
 
-**Not yet built:** Split-Screen Video, Reddit-style Story Video, Fictional Chat Story
-Video (with disclosure metadata), Streamer Clip, full advanced timeline editor (effects,
-keyframes, multi-select, snapping, virtualization, absolute-position/gap-aware
-compositing), batch rendering.
+**Split-Screen Video** is also built, but as a Phase-1-style **local media tool** (no AI
+key needed) rather than a project workflow -- it's pure FFmpeg compositing, so it lives at
+`/tools/split-screen` alongside the cutter/cropper/compressor, following that same
+anonymous-workspace pattern (`POST /api/media/split-screen`, direct file-in/file-out, no
+project or asset rows). Two sources are scaled+cropped to fill their half of the canvas and
+stacked (`vstack`/`hstack`) with a real `filter_complex` call
+(`src/lib/media/ffmpeg.ts:renderSplitScreen`); audio comes from exactly one chosen source.
+
+Real bug caught by live verification, not left for a review to catch: `-shortest` does
+**not** trim the output when two differently-sized inputs have already been merged into one
+`[v]` stream by `vstack`/`hstack` -- verified directly with an 8s + 5s source pair, which
+produced an 8s output (the *longer* source), not 5s. FFmpeg's `-shortest` only compares
+mapped streams' own packet timestamps, and after the filter merges them there's only one
+stream left to compare against itself. Fixed by probing both sources' real durations
+up front and explicitly trimming the output to the shorter one (`-t <duration>`) instead of
+relying on `-shortest`. Re-verified after the fix: the same 8s+5s pair now correctly
+produces a 5.000s output, confirmed via ffprobe and a visual frame-grab showing both
+distinct sources genuinely stacked (not the same source duplicated).
+
+**Not yet built:** Reddit-style Story Video, Fictional Chat Story Video (with disclosure
+metadata), Streamer Clip, full advanced timeline editor (effects, keyframes, multi-select,
+snapping, virtualization, absolute-position/gap-aware compositing), batch rendering.
 
 ## Phase 6 — Remaining tools + templates + assets (NOT YET BUILT)
 

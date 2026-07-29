@@ -20,6 +20,7 @@ import {
   FileAudio,
   MagnifyingGlass,
   CloudArrowDown,
+  Columns,
 } from "@phosphor-icons/react/dist/ssr";
 
 export type ToolEntry = {
@@ -171,6 +172,14 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     description:
       "Reduce background noise and room tone with real FFT-based denoising.",
     icon: SpeakerHigh,
+    requiresKey: false,
+  },
+  {
+    slug: "split-screen",
+    label: "Split-Screen Video",
+    description:
+      "Combine two videos into one split-screen short — top/bottom or side by side.",
+    icon: Columns,
     requiresKey: false,
   },
   {

@@ -33,3 +33,8 @@ export const NormalizeAudioRequestSchema = z.object({
 export const EnhanceSpeechRequestSchema = z.object({
   strength: z.coerce.number().min(1).max(30),
 });
+
+export const SplitScreenRequestSchema = z.object({
+  layout: z.enum(["vertical", "horizontal"]),
+  audioSource: z.enum(["top", "bottom"]),
+});
