@@ -38,3 +38,7 @@ export const SplitScreenRequestSchema = z.object({
   layout: z.enum(["vertical", "horizontal"]),
   audioSource: z.enum(["top", "bottom"]),
 });
+
+export const VoiceChangerRequestSchema = z.object({
+  preset: z.enum(["very-deep", "deep", "high", "chipmunk"]),
+});

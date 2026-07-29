@@ -68,13 +68,6 @@ export const AI_TOOLS: ToolEntry[] = [
     requiresKey: true,
   },
   {
-    label: "Voice Changer",
-    description:
-      "Apply generic, non-identifying voice presets to a recording — pitch, tone, and texture, not impersonation.",
-    icon: Faders,
-    requiresKey: true,
-  },
-  {
     label: "Vocal / Instrumental Separator",
     description:
       "Split a mixed track into vocal and instrumental stems for remixing, ducking, or subtitle alignment.",
@@ -180,6 +173,14 @@ export const LOCAL_TOOLS: ToolEntry[] = [
     description:
       "Combine two videos into one split-screen short — top/bottom or side by side.",
     icon: Columns,
+    requiresKey: false,
+  },
+  {
+    slug: "voice-changer",
+    label: "Voice Changer",
+    description:
+      "Apply generic, non-identifying pitch presets to a recording — tone and texture, not impersonation.",
+    icon: Faders,
     requiresKey: false,
   },
   {

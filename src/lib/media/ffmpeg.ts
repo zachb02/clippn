@@ -45,6 +45,7 @@ interface FfprobeStream {
   codec_type: "video" | "audio" | string;
   width?: number;
   height?: number;
+  sample_rate?: string;
 }
 
 interface FfprobeOutput {
@@ -343,6 +344,59 @@ export async function renderSplitScreen(input: SplitScreenInput): Promise<void> 
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
+    input.outputPath,
+  ]);
+}
+
+export interface VoiceChangerInput {
+  sourcePath: string;
+  outputPath: string;
+  preset: "very-deep" | "deep" | "high" | "chipmunk";
+}
+
+// Pitch multiplier per preset. Kept within [0.5, 2.0] so the compensating
+// atempo (1/factor) stays inside atempo's own single-filter valid range --
+// no need to chain multiple atempo stages.
+const VOICE_PITCH_FACTORS: Record<VoiceChangerInput["preset"], number> = {
+  "very-deep": 0.65,
+  deep: 0.8,
+  high: 1.2,
+  chipmunk: 1.5,
+};
+
+/**
+ * Real pitch-shifting via asetrate+atempo, not a placeholder or a generic
+ * EQ pass mislabeled as a voice changer. This FFmpeg build has no
+ * rubberband filter compiled in, so this is the standard fallback
+ * technique real audio tools use for pitch-only shifting: asetrate
+ * changes the sample rate (which shifts pitch but also speeds up/slows
+ * down playback), aresample restores the nominal rate so downstream
+ * encoding is normal, and atempo compensates the tempo back so only the
+ * pitch actually changes, not the duration.
+ */
+export async function changeVoice(input: VoiceChangerInput): Promise<void> {
+  const { stdout } = await execFileAsync(FFPROBE_PATH, [
+    "-v", "error",
+    ...SAFE_PROTOCOL_ARGS,
+    "-select_streams", "a:0",
+    "-show_entries", "stream=sample_rate",
+    "-of", "json",
+    input.sourcePath,
+  ]);
+  const parsed = JSON.parse(stdout) as { streams?: { sample_rate?: string }[] };
+  const sampleRate = Number(parsed.streams?.[0]?.sample_rate) || 44100;
+
+  const factor = VOICE_PITCH_FACTORS[input.preset];
+  const newRate = Math.round(sampleRate * factor);
+  const tempoCompensation = 1 / factor;
+  const filter = `asetrate=${newRate},aresample=${sampleRate},atempo=${tempoCompensation}`;
+
+  await execFileAsync(FFMPEG_PATH, [
+    "-y",
+    ...SAFE_PROTOCOL_ARGS,
+    "-i", input.sourcePath,
+    "-af", filter,
+    "-c:v", "copy",
     input.outputPath,
   ]);
 }

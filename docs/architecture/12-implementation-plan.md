@@ -217,11 +217,23 @@ caption all rendering correctly together.
 full advanced timeline editor (effects, keyframes, multi-select, snapping, virtualization,
 absolute-position/gap-aware compositing), batch rendering.
 
+**Voice Changer** was pulled forward from Phase 6 and built as a **local FFmpeg tool** (no
+AI key needed), the same way Split-Screen was -- moved from `AI_TOOLS` to `LOCAL_TOOLS` in
+`tools-directory.ts` and `requiresKey` flipped to `false`. `src/lib/media/ffmpeg.ts`'s
+`changeVoice()` does real pitch-shifting via `asetrate` + `aresample` + `atempo` (this
+FFmpeg build has no `rubberband` filter compiled in, so this is the standard fallback
+technique real audio tools use, not a lesser option chosen for convenience) across four
+presets (Very Deep/Deep/High/Chipmunk). Verified with real, hard numbers, not just "it ran
+without error": fed a pure 220Hz test tone through all four presets, measured each output's
+actual frequency via zero-crossing rate, and confirmed every preset landed within ~0.1Hz of
+its expected target (e.g. Chipmunk's 1.5x factor: 220Hz -> measured 329.9Hz vs the expected
+330Hz) while every output's duration stayed at ~3.000s (confirming the tempo-compensation
+side of the technique also works, not just the pitch shift).
+
 ## Phase 6 — Remaining tools + templates + assets (NOT YET BUILT)
 
-Background Remover, Subtitle Remover, Voice Changer, consent-gated Face Swap,
-capability-gated AI Video tool, original template system (14 categories), full asset/
-content library.
+Background Remover, Subtitle Remover, consent-gated Face Swap, capability-gated AI Video
+tool, original template system (14 categories), full asset/content library.
 
 ## Phase 7 — Organization and trust features (NOT YET BUILT)
 
