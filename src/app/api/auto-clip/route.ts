@@ -10,6 +10,8 @@ import { getDefaultTranscriptionModelId, getDefaultTextModelId } from "@/lib/ai/
 import { resolveCredential } from "@/lib/credentials/resolve-credential";
 import { saveAsset, deleteAsset } from "@/lib/storage/local-storage";
 import { inspectMedia } from "@/lib/media/ffmpeg";
+import { downloadYoutubeVideo } from "@/lib/media/youtube";
+import { YOUTUBE_RIGHTS_STATEMENT } from "@/lib/media/youtube-rights";
 import { renderAutoClipSegment } from "@/lib/timeline/auto-clip-render";
 import { parseAutoClipHighlights } from "@/lib/schemas/auto-clip";
 
@@ -26,6 +28,7 @@ const MAX_CLIP_SECONDS = 90;
 // still representative, since Whisper segments are short and this covers
 // a substantial portion of a typical short/mid-length video.
 const MAX_TRANSCRIPT_CHARS = 12_000;
+const RIGHTS_STATEMENT_VERSION = "1";
 
 interface GeneratedClip {
   assetId: string;
@@ -55,10 +58,21 @@ export async function POST(request: Request) {
 
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file");
+  const youtubeUrlRaw = formData?.get("youtubeUrl");
+  const rightsConfirmed = formData?.get("rightsConfirmed") === "true";
   const connectionIdRaw = formData?.get("connectionId");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "No video file provided." }, { status: 400 });
+
+  const isUpload = file instanceof File;
+  const youtubeUrl = typeof youtubeUrlRaw === "string" ? youtubeUrlRaw.trim() : "";
+  const isYoutube = !isUpload && youtubeUrl.length > 0;
+
+  if (!isUpload && !isYoutube) {
+    return NextResponse.json({ error: "Provide a video file or a YouTube link." }, { status: 400 });
   }
+  if (isYoutube && !rightsConfirmed) {
+    return NextResponse.json({ error: "Confirm you have the rights to use this video before importing it." }, { status: 400 });
+  }
+
   const parsedConnectionId = ConnectionIdSchema.safeParse(connectionIdRaw);
   if (!parsedConnectionId.success) {
     return NextResponse.json({ error: "Select a provider connection." }, { status: 400 });
@@ -80,10 +94,30 @@ export async function POST(request: Request) {
   const jobDir = await mkdtemp(path.join(tmpdir(), "clippn-auto-clip-"));
 
   try {
-    const sourceExtension = path.extname(file.name).slice(0, 10) || ".mp4";
-    const sourcePath = path.join(jobDir, `source${sourceExtension}`);
-    const sourceBuffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(sourcePath, sourceBuffer);
+    let sourcePath: string;
+    let sourceBuffer: Buffer;
+    let originalFilename: string;
+    let mimeType: string | null;
+
+    if (isUpload) {
+      const sourceExtension = path.extname(file.name).slice(0, 10) || ".mp4";
+      sourcePath = path.join(jobDir, `source${sourceExtension}`);
+      sourceBuffer = Buffer.from(await file.arrayBuffer());
+      await writeFile(sourcePath, sourceBuffer);
+      originalFilename = file.name;
+      mimeType = file.type || null;
+    } else {
+      try {
+        const downloaded = await downloadYoutubeVideo(youtubeUrl, jobDir);
+        sourcePath = downloaded.sourcePath;
+        sourceBuffer = await readFile(sourcePath);
+        originalFilename = `${downloaded.title}${path.extname(sourcePath)}`;
+        mimeType = "video/mp4";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not download this YouTube video.";
+        throw new AutoClipError(422, message);
+      }
+    }
 
     // Real validation: ffprobe on the actual bytes, not the declared
     // filename/MIME. Also enforces the existing duration/resolution caps.
@@ -96,35 +130,49 @@ export async function POST(request: Request) {
       `insert into projects (user_id, title, workflow, status)
        values ($1, $2, 'auto-clip', 'transcribing')
        returning id`,
-      [userId, file.name.replace(/\.[^.]+$/, "").slice(0, 120) || "Auto Clip"]
+      [userId, originalFilename.replace(/\.[^.]+$/, "").slice(0, 120) || "Auto Clip"]
     );
     if (!project) {
       throw new AutoClipError(500, "Could not create a project for this clip.");
     }
     projectId = project.id;
 
-    const savedSource = await saveAsset(projectId, sourceBuffer, file.name);
+    if (isYoutube) {
+      // Real, recorded rights attestation -- not a checkbox that's
+      // discarded after submit -- consistent with how every other
+      // rights-sensitive import in this app's design is meant to work.
+      await query(
+        `insert into consent_attestations
+           (user_id, project_id, kind, statement_version, statement_text, source_asset_ids, accepted_at)
+         values ($1, $2, 'rights_import', $3, $4, '{}', now())`,
+        [userId, projectId, RIGHTS_STATEMENT_VERSION, YOUTUBE_RIGHTS_STATEMENT]
+      );
+    }
+
+    const savedSource = await saveAsset(projectId, sourceBuffer, originalFilename);
     sourceStoragePath = savedSource.storagePath;
     await query(
       `insert into assets
          (user_id, project_id, kind, storage_path, original_filename, mime_type, byte_size,
           duration_seconds, width, height, source)
-       values ($1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, 'upload')`,
+       values ($1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         userId,
         projectId,
         sourceStoragePath,
-        file.name.replace(/[/\\]/g, "_").slice(0, 255),
-        file.type || null,
-        file.size,
+        originalFilename.replace(/[/\\]/g, "_").slice(0, 255),
+        mimeType,
+        sourceBuffer.byteLength,
         metadata.durationSeconds,
         metadata.width || null,
         metadata.height || null,
+        isYoutube ? "import" : "upload",
       ]
     );
 
-    // Real transcription of the actual uploaded bytes -- never fetched from
-    // a URL, read directly from this request's own temp file.
+    // Real transcription of the actual downloaded/uploaded bytes -- never
+    // fetched from a URL by the provider adapter itself, read directly from
+    // this request's own temp file.
     const transcript = await provider.transcribeAudio(
       {
         audioUrl: sourcePath,
@@ -245,6 +293,8 @@ Return ONLY a JSON array (no prose, no markdown fences) of up to 5 clip candidat
     // project_id is ON DELETE SET NULL, not CASCADE, so deleting the
     // project first would leave orphaned asset rows (project_id nulled)
     // still pointing at files this same block is about to delete.
+    // consent_attestations.project_id is also ON DELETE SET NULL, so it's
+    // never left referencing a deleted project either way.
     if (projectId) {
       await query(`delete from assets where project_id = $1`, [projectId]).catch(() => {});
       await query(`delete from projects where id = $1`, [projectId]).catch(() => {});

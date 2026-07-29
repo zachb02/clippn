@@ -97,7 +97,12 @@ would be dishonest, so it stays unbuilt rather than approximated).
 ## Phase 5 — Primary creation workflows (Auto Clip BUILT, rest NOT YET BUILT)
 
 **Auto Clip** — the flagship workflow, built and verified end-to-end for real:
-`POST /api/auto-clip` accepts an uploaded long-form video + a provider connection, then:
+`POST /api/auto-clip` accepts either an uploaded long-form video OR a YouTube URL (real
+`yt-dlp` download, validated against an exact hostname allowlist via `new URL()` -- not a
+regex over the raw string, which a crafted URL could fool -- and gated behind a real,
+recorded rights attestation via `consent_attestations` (`kind: 'rights_import'`), the
+same table/pattern the security model already designed for rights-sensitive imports) +
+a provider connection, then:
 1. Real ffprobe validation (`inspectMedia`) of the actual uploaded bytes.
 2. Saves the source as a real project asset (creates a project with `workflow: 'auto-clip'`).
 3. Real transcription of the actual video (OpenAI Whisper directly accepts mp4 -- no audio
@@ -115,6 +120,19 @@ would be dishonest, so it stays unbuilt rather than approximated).
    transcript, never LLM-invented.
 6. Each rendered clip is verified via `inspectMedia` on its own output (not just "ffmpeg
    exited 0") and saved as a real project asset.
+
+**YouTube import** (`src/lib/media/youtube.ts`) reuses this exact same pipeline from step 1
+onward -- the download step just resolves a real local file path the same way an upload
+does. Two separate `yt-dlp` invocations, not one combined metadata+download call: verified
+directly against a real video during development that combining `--print` with an actual
+download silently skipped writing the file on the installed `yt-dlp` version. Verified
+end-to-end against a real public YouTube video ("Me at the zoo") -- real download, real
+title captured, real recorded consent attestation, real transcription, real rendered
+vertical clip confirmed via ffprobe and a visual frame-grab showing the actual downloaded
+footage (not a placeholder) with the caption burned in. Also verified: a crafted URL
+designed to fool a naive substring check (`https://evil.com/?u=youtube.com/...`) is
+correctly rejected by the real `new URL()` + exact-hostname-allowlist check before any
+download is attempted.
 
 Also fixed as a prerequisite: `mock-provider.ts`'s `generateText` returned a generic
 "Simulated response for: ..." string, which isn't valid JSON -- this would have made Auto

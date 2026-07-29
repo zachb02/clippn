@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Scissors, UploadSimple, DownloadSimple } from "@phosphor-icons/react/dist/ssr";
+import { Scissors, UploadSimple, DownloadSimple, LinkSimple } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -12,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { YOUTUBE_RIGHTS_STATEMENT } from "@/lib/media/youtube-rights";
 
 interface Connection {
   id: string;
@@ -30,18 +33,29 @@ interface GeneratedClip {
 const ACCEPTED_TYPES = ["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"];
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
-const STAGES = [
-  "Uploading video…",
-  "Transcribing speech…",
-  "Finding the best moments…",
-  "Rendering vertical clips…",
-];
+const UPLOAD_STAGES = ["Uploading video…", "Transcribing speech…", "Finding the best moments…", "Rendering vertical clips…"];
+const YOUTUBE_STAGES = ["Downloading from YouTube…", "Transcribing speech…", "Finding the best moments…", "Rendering vertical clips…"];
+
+function isPlausibleYoutubeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export function AutoClipTool() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [loadingConnections, setLoadingConnections] = useState(true);
+  const [mode, setMode] = useState<"upload" | "youtube">("upload");
   const [file, setFile] = useState<File | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<{ projectId: string; clips: GeneratedClip[] } | null>(null);
@@ -79,23 +93,34 @@ export function AutoClipTool() {
     setResult(null);
   }
 
+  const canGenerate =
+    !loading &&
+    !!connectionId &&
+    (mode === "upload" ? !!file : isPlausibleYoutubeUrl(youtubeUrl) && rightsConfirmed);
+
   async function handleGenerate() {
-    if (loading || !connectionId || !file) return;
+    if (!canGenerate || !connectionId) return;
     setLoading(true);
     setResult(null);
     setStageIndex(0);
+    const stages = mode === "upload" ? UPLOAD_STAGES : YOUTUBE_STAGES;
     // There's no real progress channel from the backend yet -- this cycles
     // through the pipeline's known stages on a timer purely so the UI
     // doesn't look frozen during what can be a multi-minute job. It's a
     // stage indicator, not a measured progress bar.
     stageTimerRef.current = setInterval(() => {
-      setStageIndex((i) => Math.min(i + 1, STAGES.length - 1));
+      setStageIndex((i) => Math.min(i + 1, stages.length - 1));
     }, 8000);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
       formData.append("connectionId", connectionId);
+      if (mode === "upload" && file) {
+        formData.append("file", file);
+      } else {
+        formData.append("youtubeUrl", youtubeUrl.trim());
+        formData.append("rightsConfirmed", String(rightsConfirmed));
+      }
       const response = await fetch("/api/auto-clip", { method: "POST", body: formData });
       const body = await response.json();
       if (!response.ok) {
@@ -138,30 +163,69 @@ export function AutoClipTool() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border/60 bg-card p-5">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-          className="hidden"
-          onChange={(e) => handleFileSelected(e.target.files?.[0])}
-        />
-        {file ? (
-          <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
-            <span className="truncate text-sm">{file.name}</span>
-            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={loading}>
-              Choose a different video
-            </Button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 py-10 text-sm text-muted-foreground transition-colors hover:border-primary/40"
-          >
-            <UploadSimple className="size-6" />
-            Upload a long-form video (MP4, MOV, WebM, or MKV)
-          </button>
-        )}
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "upload" | "youtube")}>
+          <TabsList>
+            <TabsTrigger value="upload" disabled={loading}>
+              Upload a file
+            </TabsTrigger>
+            <TabsTrigger value="youtube" disabled={loading}>
+              YouTube link
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="upload" className="mt-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+              className="hidden"
+              onChange={(e) => handleFileSelected(e.target.files?.[0])}
+            />
+            {file ? (
+              <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                <span className="truncate text-sm">{file.name}</span>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={loading}>
+                  Choose a different video
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 py-10 text-sm text-muted-foreground transition-colors hover:border-primary/40"
+              >
+                <UploadSimple className="size-6" />
+                Upload a long-form video (MP4, MOV, WebM, or MKV)
+              </button>
+            )}
+          </TabsContent>
+
+          <TabsContent value="youtube" className="mt-4 space-y-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3">
+              <LinkSimple className="size-4 shrink-0 text-muted-foreground" />
+              <Input
+                value={youtubeUrl}
+                onChange={(e) => {
+                  setYoutubeUrl(e.target.value);
+                  setResult(null);
+                }}
+                placeholder="https://www.youtube.com/watch?v=..."
+                disabled={loading}
+                className="border-0 px-0 shadow-none focus-visible:ring-0"
+              />
+            </div>
+            <label className="flex items-start gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={rightsConfirmed}
+                onChange={(e) => setRightsConfirmed(e.target.checked)}
+                disabled={loading}
+                className="mt-0.5 size-4 shrink-0"
+              />
+              {YOUTUBE_RIGHTS_STATEMENT}
+            </label>
+          </TabsContent>
+        </Tabs>
 
         <div className="mt-4 flex items-center gap-3">
           <Select value={connectionId ?? undefined} onValueChange={setConnectionId} disabled={loading}>
@@ -181,7 +245,7 @@ export function AutoClipTool() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleGenerate} disabled={loading || !file || !connectionId}>
+          <Button onClick={handleGenerate} disabled={!canGenerate}>
             <Scissors />
             {loading ? "Generating…" : "Generate Clips"}
           </Button>
@@ -189,7 +253,8 @@ export function AutoClipTool() {
 
         {loading && (
           <p className="mt-3 text-sm text-muted-foreground">
-            {STAGES[stageIndex]} This can take a few minutes for longer videos.
+            {(mode === "upload" ? UPLOAD_STAGES : YOUTUBE_STAGES)[stageIndex]} This can take a few minutes for
+            longer videos.
           </p>
         )}
       </div>
