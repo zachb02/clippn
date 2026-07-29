@@ -1,7 +1,23 @@
 import { readFile } from "fs/promises";
 import path from "path";
 
-const DATA_URL_PATTERN = /^data:([\w.+-]+)\/([\w.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/i;
+// The base64 payload group requires full 4-character quartets with only
+// the last quartet allowed to carry padding ("=" or "==") -- a looser
+// charset-only check (e.g. `[A-Za-z0-9+/]*={0,2}`) still accepts
+// non-quartet lengths like "AAAAA" or wrongly-padded strings like "AAAA=",
+// which Node's permissive decoder then silently turns into a truncated,
+// wrong buffer instead of erroring.
+const DATA_URL_PATTERN = /^data:([\w.+-]+)\/([\w.+-]+);base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/i;
+
+const EXTENSION_KIND: Record<string, "audio" | "image"> = {
+  ".mp3": "audio",
+  ".wav": "audio",
+  ".m4a": "audio",
+  ".png": "image",
+  ".jpg": "image",
+  ".jpeg": "image",
+  ".webp": "image",
+};
 
 /**
  * A provider adapter's generated-media URL (image or audio) is always one
@@ -15,13 +31,14 @@ const DATA_URL_PATTERN = /^data:([\w.+-]+)\/([\w.+-]+);base64,([A-Za-z0-9+/]*={0
  * audioUrl/imageUrl come from a provider adapter, not the requesting user
  * directly, but a misbehaving or future adapter is still an untrusted
  * boundary:
- * - the declared mime type is checked against `expectedKind` ("audio" or
- *   "image"), so a mislabeled or wrong-shaped payload is rejected instead
- *   of silently flowing downstream as the wrong media type;
- * - the base64 payload is validated against the real base64 charset
- *   before decoding, so garbage like "AAAA!!!!" is rejected outright
- *   instead of Node's permissive decoder silently producing a truncated,
- *   wrong buffer;
+ * - the declared mime type (data: URL) or file extension (same-origin
+ *   path) is checked against `expectedKind` ("audio" or "image"), so a
+ *   mislabeled or wrong-shaped payload is rejected instead of silently
+ *   flowing downstream as the wrong media type;
+ * - the base64 payload is validated against real base64 quartet/padding
+ *   rules before decoding, so malformed input is rejected outright instead
+ *   of Node's permissive decoder silently producing a truncated, wrong
+ *   buffer;
  * - the same-origin path form is resolved and required to stay contained
  *   within public/, the same defense-in-depth pattern as
  *   resolveStoragePath.
@@ -44,6 +61,9 @@ export async function resolveGeneratedMediaBuffer(url: string, expectedKind: "au
   const resolvedPath = path.resolve(publicRoot, `.${url}`);
   if (!url.startsWith("/") || (resolvedPath !== publicRoot && !resolvedPath.startsWith(publicRoot + path.sep))) {
     throw new Error("This provider's generated media format isn't supported yet.");
+  }
+  if (EXTENSION_KIND[path.extname(url).toLowerCase()] !== expectedKind) {
+    throw new Error(`Expected ${expectedKind} data but got a different file type.`);
   }
   return readFile(resolvedPath);
 }

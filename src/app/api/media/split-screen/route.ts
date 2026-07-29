@@ -7,6 +7,11 @@ import { generateDownloadFilename } from "@/lib/media/temp-job";
 import { SplitScreenRequestSchema } from "@/lib/schemas/media-tools";
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+// Same reasoning as Auto Clip / Idea-to-Short / Reddit Story: a local
+// single-user app with no distributed rate limiter, but nothing should
+// let several concurrent encodes pile up unbounded on the user's machine.
+const MAX_CONCURRENT_JOBS = 2;
+let activeJobs = 0;
 
 export async function POST(request: Request) {
   const formData = await request.formData().catch(() => null);
@@ -31,8 +36,17 @@ export async function POST(request: Request) {
   }
   const { layout, audioSource } = parsed.data;
 
-  const jobDir = await mkdtemp(path.join(tmpdir(), "clippn-split-screen-"));
+  if (activeJobs >= MAX_CONCURRENT_JOBS) {
+    return NextResponse.json(
+      { error: "Too many combine jobs are already running. Wait for one to finish and try again." },
+      { status: 429 }
+    );
+  }
+  activeJobs++;
+
+  let jobDir: string | null = null;
   try {
+    jobDir = await mkdtemp(path.join(tmpdir(), "clippn-split-screen-"));
     const topPath = path.join(jobDir, `top${path.extname(topFile.name).slice(0, 10) || ".mp4"}`);
     const bottomPath = path.join(jobDir, `bottom${path.extname(bottomFile.name).slice(0, 10) || ".mp4"}`);
     await writeFile(topPath, Buffer.from(await topFile.arrayBuffer()));
@@ -58,6 +72,12 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Could not combine these videos.";
     return NextResponse.json({ error: message }, { status: 422 });
   } finally {
-    await rm(jobDir, { recursive: true, force: true });
+    activeJobs--;
+    // A cleanup failure here must never override an already-returned
+    // response -- finally's own throw would replace a successful download
+    // with an unhandled 500.
+    if (jobDir) {
+      await rm(jobDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }

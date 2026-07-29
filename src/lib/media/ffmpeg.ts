@@ -9,6 +9,30 @@ const FFPROBE_PATH = process.env.FFPROBE_PATH || "ffprobe";
 const MAX_DURATION_SECONDS = 60 * 30; // 30 min decompression-bomb guard
 const MAX_DIMENSION_PX = 7680; // 8K guard
 
+// Playlist/reference-style demuxers (HLS, DASH, concat, RTSP/RTP/SDP, the
+// subfile pseudo-protocol) can make FFmpeg open a file or network resource
+// that isn't the one the caller passed in at all -- verified directly: an
+// uploaded .m3u8 renamed to look like a video, containing a
+// `file:///absolute/path` segment reference, made ffprobe transparently
+// read and report metadata for that *other* file. Every route in this
+// codebase probes a file with inspectMedia/probeMedia before ever encoding
+// it, so rejecting these format names here closes the vulnerability at the
+// one shared choke point every media tool already passes through, rather
+// than duplicating the check per-route.
+const BANNED_FORMAT_SUBSTRINGS = ["hls", "applehttp", "dash", "concat", "rtsp", "rtp", "sdp", "subfile", "mms"];
+
+function assertSafeFormat(formatName: string): void {
+  const lower = formatName.toLowerCase();
+  if (BANNED_FORMAT_SUBSTRINGS.some((banned) => lower.includes(banned))) {
+    throw new Error("This file's format isn't supported (playlist/reference-style containers are rejected for safety).");
+  }
+}
+
+// Complementary hardening: even for formats not on the substring blocklist,
+// don't let FFmpeg follow a reference to a network resource -- only local
+// file/pipe access is ever legitimate for an uploaded file.
+const SAFE_PROTOCOL_ARGS = ["-protocol_whitelist", "file,pipe,crypto,data"];
+
 export interface MediaMetadata {
   durationSeconds: number;
   width: number;
@@ -37,6 +61,7 @@ interface FfprobeOutput {
 export async function inspectMedia(sourcePath: string): Promise<MediaMetadata> {
   const { stdout } = await execFileAsync(FFPROBE_PATH, [
     "-v", "error",
+    ...SAFE_PROTOCOL_ARGS,
     "-show_format",
     "-show_streams",
     "-of", "json",
@@ -44,6 +69,7 @@ export async function inspectMedia(sourcePath: string): Promise<MediaMetadata> {
   ]);
 
   const parsed = JSON.parse(stdout) as FfprobeOutput;
+  assertSafeFormat(parsed.format.format_name ?? "");
   const videoStream = parsed.streams.find((s) => s.codec_type === "video");
   const hasAudio = parsed.streams.some((s) => s.codec_type === "audio");
   const durationSeconds = Number(parsed.format.duration ?? 0);
@@ -124,6 +150,7 @@ export interface GenericMediaMetadata {
 export async function probeMedia(sourcePath: string): Promise<GenericMediaMetadata> {
   const { stdout } = await execFileAsync(FFPROBE_PATH, [
     "-v", "error",
+    ...SAFE_PROTOCOL_ARGS,
     "-show_format",
     "-show_streams",
     "-of", "json",
@@ -131,6 +158,7 @@ export async function probeMedia(sourcePath: string): Promise<GenericMediaMetada
   ]);
 
   const parsed = JSON.parse(stdout) as FfprobeOutput & { format: { bit_rate?: string } };
+  assertSafeFormat(parsed.format.format_name ?? "");
   const videoStream = parsed.streams.find((s) => s.codec_type === "video");
   const hasAudio = parsed.streams.some((s) => s.codec_type === "audio");
   const durationSeconds = Number(parsed.format.duration ?? 0);
@@ -285,20 +313,26 @@ export async function renderSplitScreen(input: SplitScreenInput): Promise<void> 
   // different lengths into a single [v] stream, there's nothing left for
   // `-shortest` to compare, and the merged filter just holds/repeats the
   // shorter source's last frame instead of truncating (verified directly:
-  // an 8s + 5s pair produced an 8s output, not 5s). Probe both sources for
-  // their real duration and explicitly trim the output to the shorter one.
+  // an 8s + 5s pair produced an 8s output, not 5s). Two layers of fix:
+  // container-level -t as a coarse trim (probeMedia's duration is
+  // container-level and can be skewed by a longer non-video stream), plus
+  // vstack/hstack's own `shortest=1` option so the stack filter itself
+  // stops at whichever of its two video inputs actually runs out of
+  // frames first, regardless of container-level duration accuracy.
   const [topMeta, bottomMeta] = await Promise.all([probeMedia(input.topPath), probeMedia(input.bottomPath)]);
   const durationSeconds = Math.min(topMeta.durationSeconds, bottomMeta.durationSeconds);
 
   const scale = (index: number, label: string) =>
     `[${index}:v]scale=${cellWidth}:${cellHeight}:force_original_aspect_ratio=increase,crop=${cellWidth}:${cellHeight},setsar=1[${label}]`;
 
-  const stackFilter = input.layout === "vertical" ? "[top][bottom]vstack=inputs=2[v]" : "[top][bottom]hstack=inputs=2[v]";
+  const stackFilter =
+    input.layout === "vertical" ? "[top][bottom]vstack=inputs=2:shortest=1[v]" : "[top][bottom]hstack=inputs=2:shortest=1[v]";
   const filterComplex = [scale(0, "top"), scale(1, "bottom"), stackFilter].join(";");
   const audioMap = input.audioSource === "top" ? "0:a?" : "1:a?";
 
   await execFileAsync(FFMPEG_PATH, [
     "-y",
+    ...SAFE_PROTOCOL_ARGS,
     "-i", input.topPath,
     "-i", input.bottomPath,
     "-filter_complex", filterComplex,
@@ -307,6 +341,7 @@ export async function renderSplitScreen(input: SplitScreenInput): Promise<void> 
     "-t", String(durationSeconds),
     "-c:v", "libx264",
     "-preset", "veryfast",
+    "-pix_fmt", "yuv420p",
     "-c:a", "aac",
     input.outputPath,
   ]);
