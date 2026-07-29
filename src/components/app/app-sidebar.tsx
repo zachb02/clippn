@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS: { href: string; label: string; icon: typeof House; built: boolean }[] = [
   { href: "/app", label: "Home", icon: House, built: true },
   { href: "/app/projects", label: "Projects", icon: FolderOpen, built: true },
-  { href: "/app/create", label: "Create", icon: Plus, built: false },
+  { href: "/app/create", label: "Create", icon: Plus, built: true },
   { href: "/app/auto-clip", label: "Auto Clip", icon: Scissors, built: true },
   { href: "/app/templates", label: "Templates", icon: SquaresFour, built: false },
   { href: "/app/editor", label: "Editor", icon: PencilSimple, built: false },
