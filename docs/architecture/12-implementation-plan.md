@@ -200,9 +200,22 @@ relying on `-shortest`. Re-verified after the fix: the same 8s+5s pair now corre
 produces a 5.000s output, confirmed via ffprobe and a visual frame-grab showing both
 distinct sources genuinely stacked (not the same source duplicated).
 
-**Not yet built:** Reddit-style Story Video, Fictional Chat Story Video (with disclosure
-metadata), Streamer Clip, full advanced timeline editor (effects, keyframes, multi-select,
-snapping, virtualization, absolute-position/gap-aware compositing), batch rendering.
+**Reddit-Style Story Video** is also built (`POST /api/reddit-story`) -- reuses most of the
+Idea-to-Short pipeline shape (topic -> narration -> real captions), but the background is a
+**deterministic sharp/SVG "story card"** (`src/lib/timeline/reddit-card-render.ts`), not an
+AI-generated image, so this workflow only needs text + speech + transcription capability,
+not image generation. The card uses a generic placeholder community/author label
+("r/stories" / "u/anonymous") and a visible "AI-generated story, narrated" disclosure line
+baked into the card itself -- never a real subreddit or username, consistent with this
+app's no-impersonation principle; this is the same well-understood stylistic convention as
+real narrated-story content, not a claim that a specific real post exists. Verified
+end-to-end via the Mock Provider (real HTTP round trip, real rendered 1080x1920 video) and
+visually confirmed via a frame-grab showing the card, its disclosure line, and the burned-in
+caption all rendering correctly together.
+
+**Not yet built:** Fictional Chat Story Video (with disclosure metadata), Streamer Clip,
+full advanced timeline editor (effects, keyframes, multi-select, snapping, virtualization,
+absolute-position/gap-aware compositing), batch rendering.
 
 ## Phase 6 — Remaining tools + templates + assets (NOT YET BUILT)
 

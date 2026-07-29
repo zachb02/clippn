@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Scissors, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { Scissors, Sparkle, Article } from "@phosphor-icons/react/dist/ssr";
 
 const WORKFLOWS = [
   {
@@ -13,6 +13,12 @@ const WORKFLOWS = [
     label: "Idea-to-Short",
     icon: Sparkle,
     description: "Start from just a topic — the AI writes a script, narrates it, generates a background, and renders a full short.",
+  },
+  {
+    href: "/app/reddit-story",
+    label: "Reddit-Style Story",
+    icon: Article,
+    description: "Give a topic — the AI writes a story post, narrates it, and renders a story-card video with captions.",
   },
 ];
 

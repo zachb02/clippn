@@ -240,13 +240,13 @@ async function burnInTextOverlays(
   ]);
 }
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** Rough monospace-independent estimate for bold sans-serif -- good enough
  * to decide wrap points without an actual font metrics library. */
-function wrapToWidth(text: string, fontSizePx: number, maxWidth: number): string[] {
+export function wrapToWidth(text: string, fontSizePx: number, maxWidth: number): string[] {
   const avgCharWidth = fontSizePx * 0.56;
   const maxCharsPerLine = Math.max(4, Math.floor(maxWidth / avgCharWidth));
   const words = text.split(/\s+/).filter(Boolean);
