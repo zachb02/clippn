@@ -7,27 +7,27 @@ import {
   FolderOpen,
   Plus,
   Scissors,
-  SquaresFour,
-  PencilSimple,
   ImageSquare,
   Sparkle,
   Waveform,
-  ChartLine,
   Gear,
 } from "@phosphor-icons/react/dist/ssr";
 import { cn } from "@/lib/utils";
 
+// No disabled/"soon" entries here on purpose -- Templates and Social
+// Tracker aren't buildable honestly right now (Templates would need a
+// real 14-category content build, Social Tracker needs OAuth app
+// registrations on each platform this environment doesn't have), and a
+// dedicated "Editor" entry would just duplicate Projects, which already
+// opens a real per-project editor. Add an item here only once it's real.
 const NAV_ITEMS: { href: string; label: string; icon: typeof House; built: boolean }[] = [
   { href: "/app", label: "Home", icon: House, built: true },
   { href: "/app/projects", label: "Projects", icon: FolderOpen, built: true },
   { href: "/app/create", label: "Create", icon: Plus, built: true },
   { href: "/app/auto-clip", label: "Auto Clip", icon: Scissors, built: true },
-  { href: "/app/templates", label: "Templates", icon: SquaresFour, built: false },
-  { href: "/app/editor", label: "Editor", icon: PencilSimple, built: false },
   { href: "/app/assets", label: "Assets", icon: ImageSquare, built: true },
   { href: "/app/ai-tools", label: "AI Tools", icon: Sparkle, built: true },
   { href: "/app/audio-tools", label: "Audio Tools", icon: Waveform, built: true },
-  { href: "/app/social-tracker", label: "Social Tracker", icon: ChartLine, built: false },
   { href: "/app/settings/providers", label: "Settings", icon: Gear, built: true },
 ];
 
